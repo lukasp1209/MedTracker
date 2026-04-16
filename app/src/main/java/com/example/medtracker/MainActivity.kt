@@ -111,7 +111,7 @@ private fun MedTrackerApp(
         ) {
             Text("Medikamente verfolgen und erinnern", style = MaterialTheme.typography.headlineMedium)
             Text(
-                "Die App plant taegliche Alarme neu nach Geraetestart und zeigt eine sichtbare Erinnerung auch auf dem Sperrbildschirm.",
+                "Die App plant tägliche Alarme neu nach Gerätestart und zeigt eine sichtbare Erinnerung auch auf dem Sperrbildschirm.",
                 style = MaterialTheme.typography.bodyMedium
             )
 
@@ -244,21 +244,21 @@ private fun MedicationList(
                 ) {
                     Text(medication.name, style = MaterialTheme.typography.titleLarge)
                     Text("Dosis: ${medication.dosage.ifBlank { "-" }}")
-                    Text("Taeglich um ${medication.hour.toString().padStart(2, '0')}:${medication.minute.toString().padStart(2, '0')}")
+                    Text("Täglich um ${medication.hour.toString().padStart(2, '0')}:${medication.minute.toString().padStart(2, '0')}")
                     if (medication.notes.isNotBlank()) {
                         Text("Hinweise: ${medication.notes}")
                     }
                     Text(
                         "Zuletzt genommen: ${medication.lastTakenAt?.let { timestamp ->
                             formatter.format(Instant.ofEpochMilli(timestamp).atZone(ZoneId.systemDefault()))
-                        } ?: "noch nicht bestaetigt"}"
+                        } ?: "noch nicht bestätigt"}"
                     )
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Button(onClick = { onMarkTaken(medication.id) }) {
                             Text("Jetzt als genommen")
                         }
                         TextButton(onClick = { onDelete(medication.id) }) {
-                            Text("Loeschen")
+                            Text("Löschen")
                         }
                     }
                 }

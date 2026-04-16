@@ -59,7 +59,7 @@ class MedicationAlarmReceiver : BroadcastReceiver() {
 
         val notification = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_launcher_foreground)
-            .setContentTitle("Zeit fuer ${medication.name}")
+            .setContentTitle("Zeit für ${medication.name}")
             .setContentText("${medication.dosage} jetzt einnehmen")
             .setPriority(NotificationCompat.PRIORITY_MAX)
             .setCategory(NotificationCompat.CATEGORY_ALARM)
@@ -87,7 +87,7 @@ class MedicationAlarmReceiver : BroadcastReceiver() {
             "Medikamenten-Erinnerungen",
             NotificationManager.IMPORTANCE_HIGH
         ).apply {
-            description = "Laute und sichtbare Erinnerungen fuer Medikamente"
+            description = "Laute und sichtbare Erinnerungen für Medikamente"
             lockscreenVisibility = android.app.Notification.VISIBILITY_PUBLIC
             setSound(soundUri, attributes)
             enableVibration(true)

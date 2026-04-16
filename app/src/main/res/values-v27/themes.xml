@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.MedTracker.Alert" parent="Theme.Material3.DayNight.NoActionBar">
+        <!-- Attributes moved to AlarmAlertActivity.kt to fix build errors -->
+    </style>
+</resources>

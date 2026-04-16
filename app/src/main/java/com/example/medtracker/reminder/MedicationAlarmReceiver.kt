@@ -19,30 +19,33 @@ import com.example.medtracker.ui.AlarmAlertActivity
 class MedicationAlarmReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         val medicationId = intent.getIntExtra(EXTRA_MEDICATION_ID, -1)
-        if (medicationId == -1) return
+        val slotIndex = intent.getIntExtra(EXTRA_SLOT_INDEX, -1)
+        if (medicationId == -1 || slotIndex == -1) return
 
         val repository = MedicationRepository(context)
         val medication = repository.getAll().firstOrNull { it.id == medicationId } ?: return
+        val intakeTime = medication.intakeTimes.getOrNull(slotIndex) ?: return
         createNotificationChannel(context)
 
+        val notificationId = notificationId(medication.id, slotIndex)
         val fullScreenIntent = PendingIntent.getActivity(
             context,
-            medication.id,
-            AlarmAlertActivity.createIntent(context, medication.id),
+            notificationId,
+            AlarmAlertActivity.createIntent(context, medication.id, slotIndex),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
         val markTakenIntent = PendingIntent.getBroadcast(
             context,
-            medication.id + ACTION_OFFSET_MARK_TAKEN,
-            createIntent(context, medication.id).apply { action = ACTION_MARK_TAKEN },
+            notificationId + ACTION_OFFSET_MARK_TAKEN,
+            createIntent(context, medication.id, slotIndex).apply { action = ACTION_MARK_TAKEN },
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
         if (intent.action == ACTION_MARK_TAKEN) {
             repository.markTaken(medication.id)
-            ReminderScheduler(context).scheduleMedication(medication)
-            NotificationManagerCompat.from(context).cancel(medication.id)
+            ReminderScheduler(context).scheduleMedicationSlot(medication, slotIndex)
+            NotificationManagerCompat.from(context).cancel(notificationId)
             return
         }
 
@@ -53,14 +56,14 @@ class MedicationAlarmReceiver : BroadcastReceiver() {
                 android.Manifest.permission.POST_NOTIFICATIONS
             ) != android.content.pm.PackageManager.PERMISSION_GRANTED
         ) {
-            ReminderScheduler(context).scheduleMedication(medication)
+            ReminderScheduler(context).scheduleMedicationSlot(medication, slotIndex)
             return
         }
 
         val notification = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_launcher_foreground)
-            .setContentTitle("Zeit für ${medication.name}")
-            .setContentText("${medication.dosage} jetzt einnehmen")
+            .setContentTitle("Zeit fuer ${medication.name}")
+            .setContentText(buildNotificationText(medication.dosage, intakeTime.label()))
             .setPriority(NotificationCompat.PRIORITY_MAX)
             .setCategory(NotificationCompat.CATEGORY_ALARM)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
@@ -70,8 +73,8 @@ class MedicationAlarmReceiver : BroadcastReceiver() {
             .addAction(0, "Als genommen markieren", markTakenIntent)
             .build()
 
-        NotificationManagerCompat.from(context).notify(medication.id, notification)
-        ReminderScheduler(context).scheduleMedication(medication)
+        NotificationManagerCompat.from(context).notify(notificationId, notification)
+        ReminderScheduler(context).scheduleMedicationSlot(medication, slotIndex)
     }
 
     private fun createNotificationChannel(context: Context) {
@@ -87,7 +90,7 @@ class MedicationAlarmReceiver : BroadcastReceiver() {
             "Medikamenten-Erinnerungen",
             NotificationManager.IMPORTANCE_HIGH
         ).apply {
-            description = "Laute und sichtbare Erinnerungen für Medikamente"
+            description = "Laute und sichtbare Erinnerungen fuer Medikamente"
             lockscreenVisibility = android.app.Notification.VISIBILITY_PUBLIC
             setSound(soundUri, attributes)
             enableVibration(true)
@@ -97,13 +100,25 @@ class MedicationAlarmReceiver : BroadcastReceiver() {
 
     companion object {
         private const val EXTRA_MEDICATION_ID = "extra_medication_id"
+        private const val EXTRA_SLOT_INDEX = "extra_slot_index"
         private const val ACTION_MARK_TAKEN = "com.example.medtracker.action.MARK_TAKEN"
         private const val ACTION_OFFSET_MARK_TAKEN = 10_000
         private const val CHANNEL_ID = "medication_reminders"
 
-        fun createIntent(context: Context, medicationId: Int): Intent {
+        fun createIntent(context: Context, medicationId: Int, slotIndex: Int): Intent {
             return Intent(context, MedicationAlarmReceiver::class.java)
                 .putExtra(EXTRA_MEDICATION_ID, medicationId)
+                .putExtra(EXTRA_SLOT_INDEX, slotIndex)
+        }
+
+        private fun notificationId(medicationId: Int, slotIndex: Int): Int = medicationId * 100 + slotIndex
+
+        private fun buildNotificationText(dosage: String, timeLabel: String): String {
+            return if (dosage.isBlank()) {
+                "Einnahme um $timeLabel"
+            } else {
+                "$dosage um $timeLabel einnehmen"
+            }
         }
     }
 }

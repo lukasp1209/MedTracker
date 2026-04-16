@@ -13,34 +13,23 @@ class ReminderScheduler(private val context: Context) {
     private val alarmManager = context.getSystemService(AlarmManager::class.java)
 
     fun scheduleMedication(medication: Medication) {
-        val triggerAtMillis = nextTriggerTimeMillis(medication)
-        val receiverIntent = MedicationAlarmReceiver.createIntent(context, medication.id)
-        val alarmIntent = PendingIntent.getBroadcast(
-            context,
-            medication.id,
-            receiverIntent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-        val infoIntent = PendingIntent.getActivity(
-            context,
-            medication.id,
-            Intent(context, com.example.medtracker.MainActivity::class.java),
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-        val alarmClock = AlarmManager.AlarmClockInfo(triggerAtMillis, infoIntent)
-        alarmManager.setAlarmClock(alarmClock, alarmIntent)
+        medication.intakeTimes.forEachIndexed { index, _ ->
+            scheduleMedicationSlot(medication, index)
+        }
     }
 
     fun cancelMedication(id: Int) {
-        val intent = MedicationAlarmReceiver.createIntent(context, id)
-        val pendingIntent = PendingIntent.getBroadcast(
-            context,
-            id,
-            intent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-        alarmManager.cancel(pendingIntent)
-        pendingIntent.cancel()
+        for (slotIndex in 0 until MAX_SLOTS_PER_MEDICATION) {
+            val intent = MedicationAlarmReceiver.createIntent(context, id, slotIndex)
+            val pendingIntent = PendingIntent.getBroadcast(
+                context,
+                requestCode(id, slotIndex),
+                intent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+            alarmManager.cancel(pendingIntent)
+            pendingIntent.cancel()
+        }
     }
 
     fun rescheduleAll(medications: List<Medication>) {
@@ -55,12 +44,40 @@ class ReminderScheduler(private val context: Context) {
         }
     }
 
-    private fun nextTriggerTimeMillis(medication: Medication): Long {
+    fun scheduleMedicationSlot(medication: Medication, slotIndex: Int) {
+        val intakeTime = medication.intakeTimes.getOrNull(slotIndex) ?: return
+        val triggerAtMillis = nextTriggerTimeMillis(intakeTime.hour, intakeTime.minute)
+        val receiverIntent = MedicationAlarmReceiver.createIntent(context, medication.id, slotIndex)
+        val requestCode = requestCode(medication.id, slotIndex)
+        val alarmIntent = PendingIntent.getBroadcast(
+            context,
+            requestCode,
+            receiverIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        val infoIntent = PendingIntent.getActivity(
+            context,
+            requestCode,
+            Intent(context, com.example.medtracker.MainActivity::class.java),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        val alarmClock = AlarmManager.AlarmClockInfo(triggerAtMillis, infoIntent)
+        alarmManager.setAlarmClock(alarmClock, alarmIntent)
+    }
+
+    private fun nextTriggerTimeMillis(hour: Int, minute: Int): Long {
         val now = LocalDateTime.now()
-        var next = now.withHour(medication.hour).withMinute(medication.minute).withSecond(0).withNano(0)
+        var next = now.withHour(hour).withMinute(minute).withSecond(0).withNano(0)
         if (!next.isAfter(now)) {
             next = next.plusDays(1)
         }
         return next.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
+    }
+
+    private fun requestCode(medicationId: Int, slotIndex: Int): Int = medicationId * SLOT_FACTOR + slotIndex
+
+    companion object {
+        private const val SLOT_FACTOR = 100
+        private const val MAX_SLOTS_PER_MEDICATION = SLOT_FACTOR
     }
 }

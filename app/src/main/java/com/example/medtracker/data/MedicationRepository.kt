@@ -1,6 +1,7 @@
 package com.example.medtracker.data
 
 import android.content.Context
+import com.example.medtracker.model.IntakeTime
 import com.example.medtracker.model.Medication
 import org.json.JSONArray
 import org.json.JSONObject
@@ -22,7 +23,11 @@ class MedicationRepository(context: Context) {
             for (index in 0 until array.length()) {
                 add(array.getJSONObject(index).toMedication())
             }
-        }.sortedWith(compareBy<Medication> { it.hour }.thenBy { it.minute }.thenBy { it.name })
+        }.sortedWith(
+            compareBy<Medication> { medication ->
+                medication.intakeTimes.minOfOrNull { it.hour * 60 + it.minute } ?: Int.MAX_VALUE
+            }.thenBy { it.name }
+        )
     }
 
     fun saveAll(medications: List<Medication>) {
@@ -31,10 +36,18 @@ class MedicationRepository(context: Context) {
         prefs.edit().putString(KEY_MEDICATIONS, array.toString()).apply()
     }
 
-    fun add(name: String, dosage: String, hour: Int, minute: Int, notes: String) {
+    fun add(name: String, dosage: String, intakeTimes: List<IntakeTime>, notes: String) {
         val current = getAll()
         val nextId = (current.maxOfOrNull { it.id } ?: 0) + 1
-        saveAll(current + Medication(nextId, name.trim(), dosage.trim(), hour, minute, notes.trim()))
+        saveAll(
+            current + Medication(
+                id = nextId,
+                name = name.trim(),
+                dosage = dosage.trim(),
+                intakeTimes = intakeTimes.sortedWith(compareBy<IntakeTime> { it.hour }.thenBy { it.minute }),
+                notes = notes.trim()
+            )
+        )
     }
 
     fun delete(id: Int) {
@@ -53,21 +66,44 @@ class MedicationRepository(context: Context) {
         put("id", id)
         put("name", name)
         put("dosage", dosage)
-        put("hour", hour)
-        put("minute", minute)
+        put("intakeTimes", JSONArray().apply {
+            intakeTimes.forEach { time ->
+                put(
+                    JSONObject().apply {
+                        put("hour", time.hour)
+                        put("minute", time.minute)
+                    }
+                )
+            }
+        })
         put("notes", notes)
         put("lastTakenAt", lastTakenAt ?: JSONObject.NULL)
     }
 
-    private fun JSONObject.toMedication(): Medication = Medication(
-        id = getInt("id"),
-        name = getString("name"),
-        dosage = getString("dosage"),
-        hour = getInt("hour"),
-        minute = getInt("minute"),
-        notes = optString("notes"),
-        lastTakenAt = if (isNull("lastTakenAt")) null else getLong("lastTakenAt")
-    )
+    private fun JSONObject.toMedication(): Medication {
+        val intakeTimes = when {
+            has("intakeTimes") -> {
+                val array = getJSONArray("intakeTimes")
+                buildList {
+                    for (index in 0 until array.length()) {
+                        val item = array.getJSONObject(index)
+                        add(IntakeTime(item.getInt("hour"), item.getInt("minute")))
+                    }
+                }
+            }
+            has("hour") && has("minute") -> listOf(IntakeTime(getInt("hour"), getInt("minute")))
+            else -> emptyList()
+        }
+
+        return Medication(
+            id = getInt("id"),
+            name = getString("name"),
+            dosage = getString("dosage"),
+            intakeTimes = intakeTimes.sortedWith(compareBy<IntakeTime> { it.hour }.thenBy { it.minute }),
+            notes = optString("notes"),
+            lastTakenAt = if (isNull("lastTakenAt")) null else getLong("lastTakenAt")
+        )
+    }
 
     companion object {
         private const val PREFS_NAME = "med_tracker_store"

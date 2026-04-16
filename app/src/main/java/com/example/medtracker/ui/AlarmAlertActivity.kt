@@ -10,19 +10,23 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.example.medtracker.data.MedicationRepository
 import com.example.medtracker.reminder.MedicationAlarmReceiver
+import com.example.medtracker.ui.theme.MedTrackerTheme
 
 class AlarmAlertActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -30,28 +34,29 @@ class AlarmAlertActivity : ComponentActivity() {
         showOverLockScreen()
 
         val medicationId = intent.getIntExtra(EXTRA_MEDICATION_ID, -1)
+        val slotIndex = intent.getIntExtra(EXTRA_SLOT_INDEX, -1)
         val medication = MedicationRepository(this).getAll().firstOrNull { it.id == medicationId }
+        val intakeLabel = medication?.intakeTimes?.getOrNull(slotIndex)?.label().orEmpty()
 
         setContent {
-            Surface(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(MaterialTheme.colorScheme.errorContainer)
-            ) {
-                AlarmAlertScreen(
-                    title = medication?.name ?: "Medikament",
-                    dosage = medication?.dosage ?: "",
-                    notes = medication?.notes ?: "",
-                    onTaken = {
-                        sendBroadcast(
-                            MedicationAlarmReceiver.createIntent(this, medicationId).apply {
-                                action = "com.example.medtracker.action.MARK_TAKEN"
-                            }
-                        )
-                        finish()
-                    },
-                    onDismiss = { finish() }
-                )
+            MedTrackerTheme {
+                Surface(modifier = Modifier.fillMaxSize()) {
+                    AlarmAlertScreen(
+                        title = medication?.name ?: "Medikament",
+                        dosage = medication?.dosage.orEmpty(),
+                        intakeLabel = intakeLabel,
+                        notes = medication?.notes.orEmpty(),
+                        onTaken = {
+                            sendBroadcast(
+                                MedicationAlarmReceiver.createIntent(this, medicationId, slotIndex).apply {
+                                    action = "com.example.medtracker.action.MARK_TAKEN"
+                                }
+                            )
+                            finish()
+                        },
+                        onDismiss = { finish() }
+                    )
+                }
             }
         }
     }
@@ -77,10 +82,12 @@ class AlarmAlertActivity : ComponentActivity() {
 
     companion object {
         private const val EXTRA_MEDICATION_ID = "extra_medication_id"
+        private const val EXTRA_SLOT_INDEX = "extra_slot_index"
 
-        fun createIntent(context: Context, medicationId: Int): Intent {
+        fun createIntent(context: Context, medicationId: Int, slotIndex: Int): Intent {
             return Intent(context, AlarmAlertActivity::class.java)
                 .putExtra(EXTRA_MEDICATION_ID, medicationId)
+                .putExtra(EXTRA_SLOT_INDEX, slotIndex)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
         }
     }
@@ -90,29 +97,46 @@ class AlarmAlertActivity : ComponentActivity() {
 private fun AlarmAlertScreen(
     title: String,
     dosage: String,
+    intakeLabel: String,
     notes: String,
     onTaken: () -> Unit,
     onDismiss: () -> Unit
 ) {
-    Column(
+    Box(
         modifier = Modifier
             .fillMaxSize()
+            .background(MaterialTheme.colorScheme.surfaceContainerLowest)
             .padding(24.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
+        contentAlignment = Alignment.Center
     ) {
-        Text(text = "Erinnerung", style = MaterialTheme.typography.headlineMedium)
-        Text(text = title, style = MaterialTheme.typography.displaySmall)
-        if (dosage.isNotBlank()) {
-            Text(text = dosage, style = MaterialTheme.typography.titleLarge)
-        }
-        if (notes.isNotBlank()) {
-            Text(text = notes, style = MaterialTheme.typography.bodyLarge)
-        }
-        Button(onClick = onTaken, modifier = Modifier.fillMaxWidth()) {
-            Text("Als genommen markieren")
-        }
-        Button(onClick = onDismiss, modifier = Modifier.fillMaxWidth()) {
-            Text("Spaeter")
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(32.dp),
+            color = MaterialTheme.colorScheme.errorContainer,
+            tonalElevation = 8.dp
+        ) {
+            Column(
+                modifier = Modifier.padding(28.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                Text(text = "Erinnerung", style = MaterialTheme.typography.titleMedium)
+                Text(text = title, style = MaterialTheme.typography.displaySmall)
+                if (dosage.isNotBlank()) {
+                    Text(text = dosage, style = MaterialTheme.typography.headlineSmall)
+                }
+                if (intakeLabel.isNotBlank()) {
+                    Text(text = "Geplant fuer $intakeLabel", style = MaterialTheme.typography.bodyLarge)
+                }
+                if (notes.isNotBlank()) {
+                    Text(text = notes, style = MaterialTheme.typography.bodyLarge)
+                }
+                Button(onClick = onTaken, modifier = Modifier.fillMaxWidth()) {
+                    Text("Als genommen markieren")
+                }
+                Button(onClick = onDismiss, modifier = Modifier.fillMaxWidth()) {
+                    Text("Spaeter")
+                }
+            }
         }
     }
 }

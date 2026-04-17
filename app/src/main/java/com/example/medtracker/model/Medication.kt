@@ -1,11 +1,6 @@
 package com.example.medtracker.model
 
-data class IntakeTime(
-    val hour: Int,
-    val minute: Int
-) {
-    fun label(): String = "${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}"
-}
+import java.time.DayOfWeek
 
 data class Medication(
     val id: Int,
@@ -13,5 +8,6 @@ data class Medication(
     val dosage: String,
     val intakeTimes: List<IntakeTime>,
     val notes: String = "",
-    val lastTakenAt: Long? = null
+    val lastTakenAt: Long? = null,
+    val daysOfWeek: Set<DayOfWeek> = DayOfWeek.values().toSet() // Standard: Jeden Tag
 )

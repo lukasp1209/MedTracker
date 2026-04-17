@@ -15,6 +15,9 @@ import androidx.core.content.ContextCompat
 import com.example.medtracker.R
 import com.example.medtracker.data.MedicationRepository
 import com.example.medtracker.ui.AlarmAlertActivity
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 
 class MedicationAlarmReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
@@ -22,59 +25,66 @@ class MedicationAlarmReceiver : BroadcastReceiver() {
         val slotIndex = intent.getIntExtra(EXTRA_SLOT_INDEX, -1)
         if (medicationId == -1 || slotIndex == -1) return
 
-        val repository = MedicationRepository(context)
-        val medication = repository.getAll().firstOrNull { it.id == medicationId } ?: return
-        val intakeTime = medication.intakeTimes.getOrNull(slotIndex) ?: return
-        createNotificationChannel(context)
+        val pendingResult = goAsync()
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                val repository = MedicationRepository(context)
+                val medication = repository.getAll().firstOrNull { it.id == medicationId } ?: return@launch
+                val intakeTime = medication.intakeTimes.getOrNull(slotIndex) ?: return@launch
+                createNotificationChannel(context)
 
-        val notificationId = notificationId(medication.id, slotIndex)
-        val fullScreenIntent = PendingIntent.getActivity(
-            context,
-            notificationId,
-            AlarmAlertActivity.createIntent(context, medication.id, slotIndex),
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
+                val notificationId = notificationId(medication.id, slotIndex)
+                val fullScreenIntent = PendingIntent.getActivity(
+                    context,
+                    notificationId,
+                    AlarmAlertActivity.createIntent(context, medication.id, slotIndex),
+                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                )
 
-        val markTakenIntent = PendingIntent.getBroadcast(
-            context,
-            notificationId + ACTION_OFFSET_MARK_TAKEN,
-            createIntent(context, medication.id, slotIndex).apply { action = ACTION_MARK_TAKEN },
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
+                val markTakenIntent = PendingIntent.getBroadcast(
+                    context,
+                    notificationId + ACTION_OFFSET_MARK_TAKEN,
+                    createIntent(context, medication.id, slotIndex).apply { action = ACTION_MARK_TAKEN },
+                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                )
 
-        if (intent.action == ACTION_MARK_TAKEN) {
-            repository.markTaken(medication.id)
-            ReminderScheduler(context).scheduleMedicationSlot(medication, slotIndex)
-            NotificationManagerCompat.from(context).cancel(notificationId)
-            return
+                if (intent.action == ACTION_MARK_TAKEN) {
+                    repository.markTaken(medication.id)
+                    ReminderScheduler(context).scheduleMedicationSlot(medication, slotIndex)
+                    NotificationManagerCompat.from(context).cancel(notificationId)
+                    return@launch
+                }
+
+                if (
+                    Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                    ContextCompat.checkSelfPermission(
+                        context,
+                        android.Manifest.permission.POST_NOTIFICATIONS
+                    ) != android.content.pm.PackageManager.PERMISSION_GRANTED
+                ) {
+                    ReminderScheduler(context).scheduleMedicationSlot(medication, slotIndex)
+                    return@launch
+                }
+
+                val notification = NotificationCompat.Builder(context, CHANNEL_ID)
+                    .setSmallIcon(R.drawable.ic_launcher_foreground)
+                    .setContentTitle("Zeit fuer ${medication.name}")
+                    .setContentText(buildNotificationText(medication.dosage, intakeTime.label()))
+                    .setPriority(NotificationCompat.PRIORITY_MAX)
+                    .setCategory(NotificationCompat.CATEGORY_ALARM)
+                    .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+                    .setAutoCancel(true)
+                    .setOngoing(true)
+                    .setFullScreenIntent(fullScreenIntent, true)
+                    .addAction(0, "Als genommen markieren", markTakenIntent)
+                    .build()
+
+                NotificationManagerCompat.from(context).notify(notificationId, notification)
+                ReminderScheduler(context).scheduleMedicationSlot(medication, slotIndex)
+            } finally {
+                pendingResult.finish()
+            }
         }
-
-        if (
-            Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
-            ContextCompat.checkSelfPermission(
-                context,
-                android.Manifest.permission.POST_NOTIFICATIONS
-            ) != android.content.pm.PackageManager.PERMISSION_GRANTED
-        ) {
-            ReminderScheduler(context).scheduleMedicationSlot(medication, slotIndex)
-            return
-        }
-
-        val notification = NotificationCompat.Builder(context, CHANNEL_ID)
-            .setSmallIcon(R.drawable.ic_launcher_foreground)
-            .setContentTitle("Zeit fuer ${medication.name}")
-            .setContentText(buildNotificationText(medication.dosage, intakeTime.label()))
-            .setPriority(NotificationCompat.PRIORITY_MAX)
-            .setCategory(NotificationCompat.CATEGORY_ALARM)
-            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-            .setAutoCancel(true)
-            .setOngoing(true)
-            .setFullScreenIntent(fullScreenIntent, true)
-            .addAction(0, "Als genommen markieren", markTakenIntent)
-            .build()
-
-        NotificationManagerCompat.from(context).notify(notificationId, notification)
-        ReminderScheduler(context).scheduleMedicationSlot(medication, slotIndex)
     }
 
     private fun createNotificationChannel(context: Context) {
@@ -90,7 +100,7 @@ class MedicationAlarmReceiver : BroadcastReceiver() {
             "Medikamenten-Erinnerungen",
             NotificationManager.IMPORTANCE_HIGH
         ).apply {
-            description = "Laute und sichtbare Erinnerungen fuer Medikamente"
+            description = "Laute und sichtbare Erinnerungen für Medikamente"
             lockscreenVisibility = android.app.Notification.VISIBILITY_PUBLIC
             setSound(soundUri, attributes)
             enableVibration(true)

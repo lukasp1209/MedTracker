@@ -1,112 +1,93 @@
 package com.example.medtracker.data
 
 import android.content.Context
+import com.example.medtracker.data.local.AppDatabase
+import com.example.medtracker.data.local.IntakeHistoryEntity
+import com.example.medtracker.data.local.MedicationDao
+import com.example.medtracker.data.local.MedicationEntity
 import com.example.medtracker.model.IntakeTime
 import com.example.medtracker.model.Medication
-import org.json.JSONArray
-import org.json.JSONObject
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
 
-class MedicationRepository(context: Context) {
-    private val storageContext = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N) {
-        context.createDeviceProtectedStorageContext().also {
-            it.moveSharedPreferencesFrom(context, PREFS_NAME)
-        }
-    } else {
-        context
-    }
-    private val prefs = storageContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+class MedicationRepository(private val medicationDao: MedicationDao) {
 
-    fun getAll(): List<Medication> {
-        val raw = prefs.getString(KEY_MEDICATIONS, "[]") ?: "[]"
-        val array = JSONArray(raw)
-        return buildList {
-            for (index in 0 until array.length()) {
-                add(array.getJSONObject(index).toMedication())
-            }
-        }.sortedWith(
+    constructor(context: Context) : this(AppDatabase.getDatabase(context).medicationDao())
+
+    val medications: Flow<List<Medication>> = medicationDao.getAllMedications().map { entities ->
+        entities.map { it.toDomain() }.sortedWith(
             compareBy<Medication> { medication ->
                 medication.intakeTimes.minOfOrNull { it.hour * 60 + it.minute } ?: Int.MAX_VALUE
             }.thenBy { it.name }
         )
     }
 
-    fun saveAll(medications: List<Medication>) {
-        val array = JSONArray()
-        medications.forEach { medication -> array.put(medication.toJson()) }
-        prefs.edit().putString(KEY_MEDICATIONS, array.toString()).apply()
+    suspend fun getAll(): List<Medication> {
+        return medicationDao.getAllMedicationsList().map { it.toDomain() }.sortedWith(
+            compareBy<Medication> { medication ->
+                medication.intakeTimes.minOfOrNull { it.hour * 60 + it.minute } ?: Int.MAX_VALUE
+            }.thenBy { it.name }
+        )
     }
 
-    fun add(name: String, dosage: String, intakeTimes: List<IntakeTime>, notes: String) {
-        val current = getAll()
-        val nextId = (current.maxOfOrNull { it.id } ?: 0) + 1
-        saveAll(
-            current + Medication(
-                id = nextId,
-                name = name.trim(),
-                dosage = dosage.trim(),
-                intakeTimes = intakeTimes.sortedWith(compareBy<IntakeTime> { it.hour }.thenBy { it.minute }),
-                notes = notes.trim()
+    val history: Flow<List<IntakeHistoryEntity>> = medicationDao.getHistory()
+
+    suspend fun add(name: String, dosage: String, intakeTimes: List<IntakeTime>, notes: String, daysOfWeek: Set<java.time.DayOfWeek>) {
+        val entity = MedicationEntity(
+            name = name.trim(),
+            dosage = dosage.trim(),
+            notes = notes.trim(),
+            lastTakenAt = null,
+            intakeTimes = intakeTimes.sortedWith(compareBy<IntakeTime> { it.hour }.thenBy { it.minute }),
+            daysOfWeek = daysOfWeek
+        )
+        medicationDao.insertMedication(entity)
+    }
+
+    suspend fun delete(id: Int) {
+        medicationDao.deleteMedication(id)
+    }
+
+    suspend fun markTaken(medicationId: Int, timestamp: Long = System.currentTimeMillis()) {
+        val medication = medicationDao.getAllMedicationsList().find { it.id == medicationId } ?: return
+        markTaken(medication.toDomain(), timestamp)
+    }
+
+    suspend fun markTaken(medication: Medication, timestamp: Long = System.currentTimeMillis()) {
+        // 1. Update Medication
+        medicationDao.updateMedication(medication.toEntity().copy(lastTakenAt = timestamp))
+        
+        // 2. Add to History (Audit Trail)
+        medicationDao.insertHistory(
+            IntakeHistoryEntity(
+                medicationId = medication.id,
+                medicationName = medication.name,
+                takenAt = timestamp
             )
         )
     }
 
-    fun delete(id: Int) {
-        saveAll(getAll().filterNot { it.id == id })
-    }
-
-    fun markTaken(id: Int, timestamp: Long = System.currentTimeMillis()) {
-        saveAll(
-            getAll().map { medication ->
-                if (medication.id == id) medication.copy(lastTakenAt = timestamp) else medication
-            }
-        )
-    }
-
-    private fun Medication.toJson(): JSONObject = JSONObject().apply {
-        put("id", id)
-        put("name", name)
-        put("dosage", dosage)
-        put("intakeTimes", JSONArray().apply {
-            intakeTimes.forEach { time ->
-                put(
-                    JSONObject().apply {
-                        put("hour", time.hour)
-                        put("minute", time.minute)
-                    }
-                )
-            }
-        })
-        put("notes", notes)
-        put("lastTakenAt", lastTakenAt ?: JSONObject.NULL)
-    }
-
-    private fun JSONObject.toMedication(): Medication {
-        val intakeTimes = when {
-            has("intakeTimes") -> {
-                val array = getJSONArray("intakeTimes")
-                buildList {
-                    for (index in 0 until array.length()) {
-                        val item = array.getJSONObject(index)
-                        add(IntakeTime(item.getInt("hour"), item.getInt("minute")))
-                    }
-                }
-            }
-            has("hour") && has("minute") -> listOf(IntakeTime(getInt("hour"), getInt("minute")))
-            else -> emptyList()
-        }
-
+    private fun MedicationEntity.toDomain(): Medication {
         return Medication(
-            id = getInt("id"),
-            name = getString("name"),
-            dosage = getString("dosage"),
-            intakeTimes = intakeTimes.sortedWith(compareBy<IntakeTime> { it.hour }.thenBy { it.minute }),
-            notes = optString("notes"),
-            lastTakenAt = if (isNull("lastTakenAt")) null else getLong("lastTakenAt")
+            id = id,
+            name = name,
+            dosage = dosage,
+            intakeTimes = intakeTimes,
+            notes = notes,
+            lastTakenAt = lastTakenAt,
+            daysOfWeek = daysOfWeek
         )
     }
 
-    companion object {
-        private const val PREFS_NAME = "med_tracker_store"
-        private const val KEY_MEDICATIONS = "medications"
+    private fun Medication.toEntity(): MedicationEntity {
+        return MedicationEntity(
+            id = if (id == 0) 0 else id,
+            name = name,
+            dosage = dosage,
+            notes = notes,
+            lastTakenAt = lastTakenAt,
+            intakeTimes = intakeTimes,
+            daysOfWeek = daysOfWeek
+        )
     }
 }

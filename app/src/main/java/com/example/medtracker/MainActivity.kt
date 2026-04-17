@@ -1,17 +1,18 @@
 package com.example.medtracker
 
 import android.Manifest
-import android.annotation.SuppressLint
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.viewModels
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -35,6 +36,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -55,57 +57,96 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.DateRange
+import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.Home
+import androidx.compose.material3.Icon
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
+import androidx.compose.ui.text.style.TextAlign
+import java.time.DayOfWeek
+import java.time.format.TextStyle
+import java.util.Locale
 import com.example.medtracker.data.MedicationRepository
+import com.example.medtracker.data.local.AppDatabase
 import com.example.medtracker.model.IntakeTime
 import com.example.medtracker.model.Medication
 import com.example.medtracker.reminder.ReminderScheduler
+import com.example.medtracker.ui.HistoryScreen
+import com.example.medtracker.ui.MedTrackerViewModel
 import com.example.medtracker.ui.theme.MedTrackerTheme
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
 class MainActivity : ComponentActivity() {
+    private val viewModel: MedTrackerViewModel by viewModels {
+        val database = AppDatabase.getDatabase(this)
+        MedTrackerViewModel.Factory(
+            MedicationRepository(database.medicationDao()),
+            ReminderScheduler(this)
+        )
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
-        val repository = MedicationRepository(this)
-        val scheduler = ReminderScheduler(this)
-
         setContent {
             MedTrackerTheme {
-                MedTrackerApp(
-                    initialMedications = repository.getAll(),
-                    canScheduleExactAlarms = scheduler.canScheduleExactAlarms(),
-                    onRequestExactAlarmAccess = { requestExactAlarmAccess() },
-                    onAddMedication = { name, dosage, intakeTimes, notes ->
-                        repository.add(name, dosage, intakeTimes, notes)
-                        val updated = repository.getAll()
-                        scheduler.rescheduleAll(updated)
-                        updated
-                    },
-                    onDeleteMedication = { id ->
-                        repository.delete(id)
-                        scheduler.cancelMedication(id)
-                        repository.getAll()
-                    },
-                    onMarkTaken = { id ->
-                        repository.markTaken(id)
-                        repository.getAll()
+                var currentScreen by remember { mutableStateOf("today") }
+
+                Scaffold(
+                    bottomBar = {
+                        NavigationBar {
+                            NavigationBarItem(
+                                icon = { Icon(Icons.Default.Home, contentDescription = null) },
+                                label = { Text("Heute") },
+                                selected = currentScreen == "today",
+                                onClick = { currentScreen = "today" }
+                            )
+                            NavigationBarItem(
+                                icon = { Icon(Icons.Default.DateRange, contentDescription = null) },
+                                label = { Text("Woche") },
+                                selected = currentScreen == "weekly",
+                                onClick = { currentScreen = "weekly" }
+                            )
+                            NavigationBarItem(
+                                icon = { Icon(Icons.Default.History, contentDescription = null) },
+                                label = { Text("Historie") },
+                                selected = currentScreen == "history",
+                                onClick = { currentScreen = "history" }
+                            )
+                        }
                     }
-                )
+                ) { innerPadding ->
+                    Box(modifier = Modifier.padding(innerPadding)) {
+                        when (currentScreen) {
+                            "today" -> MedTrackerScreen(
+                                viewModel = viewModel,
+                                onRequestExactAlarmAccess = { requestExactAlarmAccess() }
+                            )
+                            "weekly" -> WeeklyScheduleScreen(viewModel = viewModel)
+                            "history" -> HistoryScreen(
+                                viewModel = viewModel,
+                                onBack = { currentScreen = "today" }
+                            )
+                        }
+                    }
+                }
             }
         }
     }
@@ -120,132 +161,99 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-@SuppressLint("UnusedBoxWithConstraintsScope")
 @Composable
-private fun MedTrackerApp(
-    initialMedications: List<Medication>,
-    canScheduleExactAlarms: Boolean,
-    onRequestExactAlarmAccess: () -> Unit,
-    onAddMedication: (String, String, List<IntakeTime>, String) -> List<Medication>,
-    onDeleteMedication: (Int) -> List<Medication>,
-    onMarkTaken: (Int) -> List<Medication>
+private fun MedTrackerScreen(
+    viewModel: MedTrackerViewModel,
+    onRequestExactAlarmAccess: () -> Unit
 ) {
-    val medications = remember { mutableStateListOf<Medication>().apply { addAll(initialMedications) } }
+    val medications by viewModel.medications.collectAsState()
     val notificationPermissionLauncher = rememberNotificationPermissionLauncher()
 
-    Scaffold(
-        modifier = Modifier.fillMaxSize(),
-        contentWindowInsets = WindowInsets.safeDrawing
-    ) { innerPadding ->
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(
-                    Brush.verticalGradient(
-                        listOf(
-                            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.8f),
-                            MaterialTheme.colorScheme.background,
-                            MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.55f)
-                        )
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(
+                Brush.verticalGradient(
+                    listOf(
+                        MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.8f),
+                        MaterialTheme.colorScheme.background,
+                        MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.55f)
                     )
                 )
-                .padding(innerPadding)
-                .statusBarsPadding()
-                .navigationBarsPadding()
-                .padding(horizontal = 16.dp, vertical = 12.dp)
+            )
+            .statusBarsPadding()
+            .navigationBarsPadding()
+            .padding(horizontal = 16.dp, vertical = 12.dp)
+    ) {
+        BoxWithConstraints(
+            modifier = Modifier
+                .fillMaxSize()
+                .widthIn(max = 1360.dp)
+                .align(Alignment.TopCenter)
         ) {
-            BoxWithConstraints(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .widthIn(max = 1360.dp)
-                    .align(Alignment.TopCenter)
-            ) {
-                val tabletLayout = maxWidth >= 900.dp
-                val sharedModifier = Modifier.fillMaxSize()
+            val tabletLayout = this.maxWidth >= 900.dp
+            val sharedModifier = Modifier.fillMaxSize()
 
-                if (tabletLayout) {
-                    Row(
-                        modifier = sharedModifier,
-                        horizontalArrangement = Arrangement.spacedBy(20.dp)
+            if (tabletLayout) {
+                Row(
+                    modifier = sharedModifier,
+                    horizontalArrangement = Arrangement.spacedBy(20.dp)
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .weight(0.95f)
+                            .verticalScroll(rememberScrollState()),
+                        verticalArrangement = Arrangement.spacedBy(16.dp)
                     ) {
-                        Column(
-                            modifier = Modifier
-                                .weight(0.95f)
-                                .verticalScroll(rememberScrollState()),
-                            verticalArrangement = Arrangement.spacedBy(16.dp)
-                        ) {
-                            HeroCard(
-                                medicationCount = medications.size,
-                                canScheduleExactAlarms = canScheduleExactAlarms,
-                                onRequestNotifications = {
-                                    notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-                                },
-                                onRequestExactAlarmAccess = onRequestExactAlarmAccess
-                            )
-                            MedicationForm(
-                                onSave = { name, dosage, intakeTimes, notes ->
-                                    medications.clear()
-                                    medications.addAll(onAddMedication(name, dosage, intakeTimes, notes))
-                                }
-                            )
-                        }
-
-                        MedicationList(
-                            medications = medications,
-                            modifier = Modifier.weight(1.25f),
-                            contentPadding = PaddingValues(bottom = 24.dp),
-                            onDelete = { id ->
-                                medications.clear()
-                                medications.addAll(onDeleteMedication(id))
+                        HeroCard(
+                            medicationCount = medications.size,
+                            canScheduleExactAlarms = viewModel.canScheduleExactAlarms(),
+                            onRequestNotifications = {
+                                notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
                             },
-                            onMarkTaken = { id ->
-                                medications.clear()
-                                medications.addAll(onMarkTaken(id))
-                            }
+                            onRequestExactAlarmAccess = onRequestExactAlarmAccess
+                        )
+                        MedicationForm(onSave = viewModel::addMedication)
+                    }
+
+                    MedicationList(
+                        medications = medications,
+                        modifier = Modifier.weight(1.25f),
+                        contentPadding = PaddingValues(bottom = 24.dp),
+                        onDelete = viewModel::deleteMedication,
+                        onMarkTaken = viewModel::markTaken
+                    )
+                }
+            } else {
+                LazyColumn(
+                    modifier = sharedModifier,
+                    verticalArrangement = Arrangement.spacedBy(16.dp),
+                    contentPadding = PaddingValues(bottom = 24.dp)
+                ) {
+                    item {
+                        HeroCard(
+                            medicationCount = medications.size,
+                            canScheduleExactAlarms = viewModel.canScheduleExactAlarms(),
+                            onRequestNotifications = {
+                                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                                    notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                                }
+                            },
+                            onRequestExactAlarmAccess = onRequestExactAlarmAccess
                         )
                     }
-                } else {
-                    LazyColumn(
-                        modifier = sharedModifier,
-                        verticalArrangement = Arrangement.spacedBy(16.dp),
-                        contentPadding = PaddingValues(bottom = 24.dp)
-                    ) {
-                        item {
-                            HeroCard(
-                                medicationCount = medications.size,
-                                canScheduleExactAlarms = canScheduleExactAlarms,
-                                onRequestNotifications = {
-                                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                                        notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-                                    }
-                                },
-                                onRequestExactAlarmAccess = onRequestExactAlarmAccess
-                            )
-                        }
-                        item {
-                            MedicationForm(
-                                onSave = { name, dosage, intakeTimes, notes ->
-                                    medications.clear()
-                                    medications.addAll(onAddMedication(name, dosage, intakeTimes, notes))
-                                }
-                            )
-                        }
-                        item {
-                            MedicationSectionHeader(count = medications.size)
-                        }
-                        items(medications, key = { medication -> medication.id }) { medication ->
-                            MedicationCard(
-                                medication = medication,
-                                onDelete = { onDeleteMedication(medication.id).also {
-                                    medications.clear()
-                                    medications.addAll(it)
-                                } },
-                                onMarkTaken = { onMarkTaken(medication.id).also {
-                                    medications.clear()
-                                    medications.addAll(it)
-                                } }
-                            )
-                        }
+                    item {
+                        MedicationForm(onSave = viewModel::addMedication)
+                    }
+                    item {
+                        MedicationSectionHeader(count = medications.size)
+                    }
+                    items(medications, key = { medication -> medication.id }) { medication ->
+                        MedicationCard(
+                            medication = medication,
+                            onDelete = { viewModel.deleteMedication(medication.id) },
+                            onMarkTaken = { viewModel.markTaken(medication) }
+                        )
                     }
                 }
             }
@@ -279,31 +287,34 @@ private fun HeroCard(
                 color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
             ) {
                 Text(
-                    text = "$medicationCount aktiv geplant",
+                    text = stringResource(R.string.planned_medications_count, medicationCount),
                     modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
                     color = MaterialTheme.colorScheme.primary,
                     fontWeight = FontWeight.SemiBold
                 )
             }
             Text(
-                text = "Deine Medikamente klar, ruhig und alltagstauglich organisiert.",
+                text = "MedTracker Übersicht",
                 style = MaterialTheme.typography.headlineMedium,
                 fontWeight = FontWeight.SemiBold
             )
             Text(
-                text = "Plane mehrere Einnahmezeiten pro Tag, halte Dosierungen konsistent und behalte den letzten Einnahmezeitpunkt im Blick.",
+                text = "Hier hast du deine tägliche Einnahme im Blick.",
                 style = MaterialTheme.typography.bodyLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                    Button(onClick = onRequestNotifications) {
+                    OutlinedButton(onClick = onRequestNotifications) {
                         Text("Benachrichtigungen")
                     }
                 }
                 if (!canScheduleExactAlarms) {
                     OutlinedButton(onClick = onRequestExactAlarmAccess) {
-                        Text("Exakte Alarme")
+                        Text("Alarme erlauben")
                     }
                 }
             }
@@ -314,15 +325,16 @@ private fun HeroCard(
 @OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
 @Composable
 private fun MedicationForm(
-    onSave: (String, String, List<IntakeTime>, String) -> Unit
+    onSave: (String, String, List<IntakeTime>, String, Set<DayOfWeek>) -> Unit
 ) {
     var name by remember { mutableStateOf("") }
     var dosage by remember { mutableStateOf("") }
     var dosageExpanded by remember { mutableStateOf(false) }
-    var hour by remember { mutableIntStateOf(8) }
-    var minute by remember { mutableIntStateOf(0) }
+    var hourString by remember { mutableStateOf("08") }
+    var minuteString by remember { mutableStateOf("00") }
     var notes by remember { mutableStateOf("") }
-    val intakeTimes = remember { mutableStateListOf(IntakeTime(8, 0)) }
+    val intakeTimes = remember { androidx.compose.runtime.mutableStateListOf(IntakeTime(8, 0)) }
+    val selectedDays = remember { mutableStateOf(DayOfWeek.values().toSet()) }
 
     val dosageSuggestions = listOf(
         "1 Tablette",
@@ -341,17 +353,13 @@ private fun MedicationForm(
             modifier = Modifier.padding(24.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            Text("Neues Medikament", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
-            Text(
-                "Lege Name, Dosis und beliebig viele Tageszeiten fest.",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
+            Text(stringResource(R.string.new_medication), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+            
             OutlinedTextField(
                 value = name,
                 onValueChange = { name = it },
                 modifier = Modifier.fillMaxWidth(),
-                label = { Text("Name") },
+                label = { Text(stringResource(R.string.name_label)) },
                 shape = RoundedCornerShape(20.dp),
                 singleLine = true
             )
@@ -365,7 +373,7 @@ private fun MedicationForm(
                     modifier = Modifier
                         .fillMaxWidth()
                         .menuAnchor(MenuAnchorType.PrimaryEditable, true),
-                    label = { Text("Dosis") },
+                    label = { Text(stringResource(R.string.dosage_label)) },
                     placeholder = { Text("z. B. 1 Tablette") },
                     trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = dosageExpanded) },
                     shape = RoundedCornerShape(20.dp),
@@ -387,6 +395,31 @@ private fun MedicationForm(
                 }
             }
 
+            // Wochentage Auswahl
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Wochentage", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    DayOfWeek.values().forEach { day ->
+                        FilterChip(
+                            selected = selectedDays.value.contains(day),
+                            onClick = {
+                                if (selectedDays.value.contains(day)) {
+                                    if (selectedDays.value.size > 1) {
+                                        selectedDays.value = selectedDays.value - day
+                                    }
+                                } else {
+                                    selectedDays.value = selectedDays.value + day
+                                }
+                            },
+                            label = { Text(day.getDisplayName(TextStyle.SHORT, Locale.GERMAN)) }
+                        )
+                    }
+                }
+            }
+
             Surface(
                 shape = RoundedCornerShape(24.dp),
                 color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.42f)
@@ -395,35 +428,45 @@ private fun MedicationForm(
                     modifier = Modifier.padding(16.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    Text("Einnahmezeiten", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                    Text(stringResource(R.string.intake_times_label), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         OutlinedTextField(
-                            value = hour.toString(),
-                            onValueChange = { hour = it.filter(Char::isDigit).toIntOrNull()?.coerceIn(0, 23) ?: 0 },
+                            value = hourString,
+                            onValueChange = { input ->
+                                if (input.length <= 2 && input.all { it.isDigit() }) hourString = input
+                            },
                             modifier = Modifier.weight(1f),
                             label = { Text("Stunde") },
+                            placeholder = { Text("HH") },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                             shape = RoundedCornerShape(18.dp),
                             singleLine = true
                         )
                         OutlinedTextField(
-                            value = minute.toString(),
-                            onValueChange = { minute = it.filter(Char::isDigit).toIntOrNull()?.coerceIn(0, 59) ?: 0 },
+                            value = minuteString,
+                            onValueChange = { input ->
+                                if (input.length <= 2 && input.all { it.isDigit() }) minuteString = input
+                            },
                             modifier = Modifier.weight(1f),
                             label = { Text("Minute") },
+                            placeholder = { Text("mm") },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                             shape = RoundedCornerShape(18.dp),
                             singleLine = true
                         )
                     }
                     OutlinedButton(
                         onClick = {
-                            val candidate = IntakeTime(hour, minute)
+                            val h = hourString.toIntOrNull()?.coerceIn(0, 23) ?: 8
+                            val m = minuteString.toIntOrNull()?.coerceIn(0, 59) ?: 0
+                            val candidate = IntakeTime(h, m)
                             if (intakeTimes.none { it.hour == candidate.hour && it.minute == candidate.minute }) {
                                 intakeTimes.add(candidate)
                                 intakeTimes.sortWith(compareBy<IntakeTime> { it.hour }.thenBy { it.minute })
                             }
                         }
                     ) {
-                        Text("Zeit hinzufügen")
+                        Text(stringResource(R.string.add_time))
                     }
                     FlowRow(
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -447,25 +490,93 @@ private fun MedicationForm(
                 value = notes,
                 onValueChange = { notes = it },
                 modifier = Modifier.fillMaxWidth(),
-                label = { Text("Hinweise") },
-                placeholder = { Text("Mit Wasser, nach dem Essen, nicht vergessen ...") },
+                label = { Text(stringResource(R.string.notes_label)) },
+                placeholder = { Text("Mit Wasser, nach dem Essen ...") },
                 shape = RoundedCornerShape(20.dp)
             )
             Button(
                 onClick = {
                     if (name.isBlank() || intakeTimes.isEmpty()) return@Button
-                    onSave(name, dosage, intakeTimes.toList(), notes)
+                    onSave(name, dosage, intakeTimes.toList(), notes, selectedDays.value)
                     name = ""
                     dosage = ""
-                    hour = 8
-                    minute = 0
+                    hourString = "08"
+                    minuteString = "00"
                     notes = ""
                     intakeTimes.clear()
                     intakeTimes.add(IntakeTime(8, 0))
+                    selectedDays.value = DayOfWeek.values().toSet()
                 },
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Text("Medikament speichern")
+                Text(stringResource(R.string.add_medication))
+            }
+        }
+    }
+}
+
+@Composable
+fun WeeklyScheduleScreen(viewModel: MedTrackerViewModel) {
+    val medications by viewModel.medications.collectAsState()
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(16.dp)
+            .verticalScroll(rememberScrollState()),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        Text(
+            text = "Wochenplan",
+            style = MaterialTheme.typography.headlineMedium,
+            fontWeight = FontWeight.Bold
+        )
+
+        DayOfWeek.values().forEach { day ->
+            val medicationsForDay = medications.filter { it.daysOfWeek.contains(day) }
+            
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.3f)
+                )
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text(
+                        text = day.getDisplayName(TextStyle.FULL, Locale.GERMAN),
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    
+                    if (medicationsForDay.isEmpty()) {
+                        Text(
+                            "Keine Medikamente geplant",
+                            style = MaterialTheme.typography.bodyMedium,
+                            modifier = Modifier.padding(vertical = 8.dp)
+                        )
+                    } else {
+                        medicationsForDay.forEach { medication ->
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 4.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(medication.name, fontWeight = FontWeight.Medium)
+                                    Text(medication.dosage, style = MaterialTheme.typography.bodySmall)
+                                }
+                                Text(
+                                    medication.intakeTimes.joinToString(", ") { it.label() },
+                                    style = MaterialTheme.typography.labelMedium
+                                )
+                            }
+                        }
+                    }
+                }
             }
         }
     }
@@ -477,7 +588,7 @@ private fun MedicationList(
     modifier: Modifier = Modifier,
     contentPadding: PaddingValues,
     onDelete: (Int) -> Unit,
-    onMarkTaken: (Int) -> Unit
+    onMarkTaken: (Medication) -> Unit
 ) {
     LazyColumn(
         modifier = modifier,
@@ -489,7 +600,7 @@ private fun MedicationList(
             MedicationCard(
                 medication = medication,
                 onDelete = { onDelete(medication.id) },
-                onMarkTaken = { onMarkTaken(medication.id) }
+                onMarkTaken = { onMarkTaken(medication) }
             )
         }
     }
@@ -499,7 +610,7 @@ private fun MedicationList(
 private fun MedicationSectionHeader(count: Int) {
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Text(
-            text = "Geplante Medikamente",
+            text = stringResource(R.string.planned_medications),
             style = MaterialTheme.typography.headlineSmall,
             fontWeight = FontWeight.SemiBold
         )
@@ -581,24 +692,20 @@ private fun MedicationCard(
             HorizontalDivider(color = MaterialTheme.colorScheme.surfaceVariant)
 
             Text(
-                text = "Zuletzt genommen: ${medication.lastTakenAt?.let { timestamp ->
+                text = stringResource(R.string.last_taken_label, medication.lastTakenAt?.let { timestamp ->
                     formatter.format(Instant.ofEpochMilli(timestamp).atZone(ZoneId.systemDefault()))
-                } ?: "noch nicht bestätigt"}",
+                } ?: stringResource(R.string.never_taken)),
                 style = MaterialTheme.typography.bodyMedium
             )
 
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 Button(onClick = onMarkTaken) {
-                    Text("Jetzt genommen")
+                    Text(stringResource(R.string.mark_taken_label))
                 }
                 TextButton(onClick = onDelete) {
-                    Text("Löschen")
+                    Text(stringResource(R.string.delete_label))
                 }
             }
         }
     }
 }
-
-private val Color.alphaSurface: Color
-    get() = copy(alpha = 0.12f)
-

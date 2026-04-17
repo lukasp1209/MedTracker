@@ -24,9 +24,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.lifecycleScope
 import com.example.medtracker.data.MedicationRepository
 import com.example.medtracker.reminder.MedicationAlarmReceiver
 import com.example.medtracker.ui.theme.MedTrackerTheme
+import kotlinx.coroutines.launch
 
 class AlarmAlertActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -35,27 +37,30 @@ class AlarmAlertActivity : ComponentActivity() {
 
         val medicationId = intent.getIntExtra(EXTRA_MEDICATION_ID, -1)
         val slotIndex = intent.getIntExtra(EXTRA_SLOT_INDEX, -1)
-        val medication = MedicationRepository(this).getAll().firstOrNull { it.id == medicationId }
-        val intakeLabel = medication?.intakeTimes?.getOrNull(slotIndex)?.label().orEmpty()
 
-        setContent {
-            MedTrackerTheme {
-                Surface(modifier = Modifier.fillMaxSize()) {
-                    AlarmAlertScreen(
-                        title = medication?.name ?: "Medikament",
-                        dosage = medication?.dosage.orEmpty(),
-                        intakeLabel = intakeLabel,
-                        notes = medication?.notes.orEmpty(),
-                        onTaken = {
-                            sendBroadcast(
-                                MedicationAlarmReceiver.createIntent(this, medicationId, slotIndex).apply {
-                                    action = "com.example.medtracker.action.MARK_TAKEN"
-                                }
-                            )
-                            finish()
-                        },
-                        onDismiss = { finish() }
-                    )
+        lifecycleScope.launch {
+            val medication = MedicationRepository(this@AlarmAlertActivity).getAll().firstOrNull { it.id == medicationId }
+            val intakeLabel = medication?.intakeTimes?.getOrNull(slotIndex)?.label().orEmpty()
+
+            setContent {
+                MedTrackerTheme {
+                    Surface(modifier = Modifier.fillMaxSize()) {
+                        AlarmAlertScreen(
+                            title = medication?.name ?: "Medikament",
+                            dosage = medication?.dosage.orEmpty(),
+                            intakeLabel = intakeLabel,
+                            notes = medication?.notes.orEmpty(),
+                            onTaken = {
+                                sendBroadcast(
+                                    MedicationAlarmReceiver.createIntent(this@AlarmAlertActivity, medicationId, slotIndex).apply {
+                                        action = "com.example.medtracker.action.MARK_TAKEN"
+                                    }
+                                )
+                                finish()
+                            },
+                            onDismiss = { finish() }
+                        )
+                    }
                 }
             }
         }
@@ -125,7 +130,7 @@ private fun AlarmAlertScreen(
                     Text(text = dosage, style = MaterialTheme.typography.headlineSmall)
                 }
                 if (intakeLabel.isNotBlank()) {
-                    Text(text = "Geplant fuer $intakeLabel", style = MaterialTheme.typography.bodyLarge)
+                    Text(text = "Geplant für $intakeLabel", style = MaterialTheme.typography.bodyLarge)
                 }
                 if (notes.isNotBlank()) {
                     Text(text = notes, style = MaterialTheme.typography.bodyLarge)
@@ -134,7 +139,7 @@ private fun AlarmAlertScreen(
                     Text("Als genommen markieren")
                 }
                 Button(onClick = onDismiss, modifier = Modifier.fillMaxWidth()) {
-                    Text("Spaeter")
+                    Text("Später")
                 }
             }
         }

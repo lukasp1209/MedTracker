@@ -1,4 +1,26 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">MedTracker</string>
+    <string name="history_title">Einnahmehistorie</string>
+    <string name="history_empty">Noch keine Einnahmen aufgezeichnet.</string>
+    <string name="history_taken_at">Eingenommen am %s</string>
+    <string name="medication_name_label">Medikament</string>
+    <string name="status_taken">Eingenommen</string>
+    <string name="status_snoozed">Verschoben</string>
+    <string name="status_skipped">Ausgelassen</string>
+    <string name="hero_subtitle">Deine Medikamente klar, ruhig und alltagstauglich organisiert.</string>
+    <string name="hero_description">Plane mehrere Einnahmezeiten pro Tag, halte Dosierungen konsistent und behalte den letzten Einnahmezeitpunkt im Blick.</string>
+    <string name="add_medication">Medikament speichern</string>
+    <string name="new_medication">Neues Medikament</string>
+    <string name="name_label">Name</string>
+    <string name="dosage_label">Dosis</string>
+    <string name="notes_label">Hinweise</string>
+    <string name="intake_times_label">Einnahmezeiten</string>
+    <string name="add_time">Zeit hinzufügen</string>
+    <string name="planned_medications">Geplante Medikamente</string>
+    <string name="delete_label">Löschen</string>
+    <string name="mark_taken_label">Jetzt genommen</string>
+    <string name="last_taken_label">Zuletzt genommen: %s</string>
+    <string name="never_taken">noch nicht bestätigt</string>
+    <string name="planned_medications_count">%d aktiv geplant</string>
 </resources>

@@ -43,6 +43,9 @@ import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
+/**
+ * Shows the recorded medication intake history.
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HistoryScreen(
@@ -104,6 +107,9 @@ fun HistoryScreen(
     }
 }
 
+/**
+ * Displays one history entry with its medication name, timestamp, and status.
+ */
 @Composable
 private fun HistoryCard(entry: IntakeHistoryEntity, formatter: DateTimeFormatter) {
     Card(

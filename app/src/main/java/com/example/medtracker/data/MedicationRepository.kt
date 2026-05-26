@@ -10,10 +10,19 @@ import com.example.medtracker.model.Medication
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 
+/**
+ * Coordinates medication data access and converts database rows into domain models.
+ */
 class MedicationRepository(private val medicationDao: MedicationDao) {
 
+    /**
+     * Creates a repository from an Android context by opening the app database.
+     */
     constructor(context: Context) : this(AppDatabase.getDatabase(context).medicationDao())
 
+    /**
+     * Observes all medications sorted by their first intake time and then by name.
+     */
     val medications: Flow<List<Medication>> = medicationDao.getAllMedications().map { entities ->
         entities.map { it.toDomain() }.sortedWith(
             compareBy<Medication> { medication ->
@@ -22,6 +31,9 @@ class MedicationRepository(private val medicationDao: MedicationDao) {
         )
     }
 
+    /**
+     * Loads all medications once, using the same sorting as the observable medication list.
+     */
     suspend fun getAll(): List<Medication> {
         return medicationDao.getAllMedicationsList().map { it.toDomain() }.sortedWith(
             compareBy<Medication> { medication ->
@@ -30,8 +42,14 @@ class MedicationRepository(private val medicationDao: MedicationDao) {
         )
     }
 
+    /**
+     * Observes the complete medication intake history.
+     */
     val history: Flow<List<IntakeHistoryEntity>> = medicationDao.getHistory()
 
+    /**
+     * Adds a new medication after trimming text fields and sorting its intake times.
+     */
     suspend fun add(name: String, dosage: String, intakeTimes: List<IntakeTime>, notes: String, daysOfWeek: Set<java.time.DayOfWeek>) {
         val entity = MedicationEntity(
             name = name.trim(),
@@ -44,15 +62,24 @@ class MedicationRepository(private val medicationDao: MedicationDao) {
         medicationDao.insertMedication(entity)
     }
 
+    /**
+     * Deletes the medication with the given id.
+     */
     suspend fun delete(id: Int) {
         medicationDao.deleteMedication(id)
     }
 
+    /**
+     * Marks the medication with the given id as taken at the provided timestamp.
+     */
     suspend fun markTaken(medicationId: Int, timestamp: Long = System.currentTimeMillis()) {
         val medication = medicationDao.getAllMedicationsList().find { it.id == medicationId } ?: return
         markTaken(medication.toDomain(), timestamp)
     }
 
+    /**
+     * Updates a medication's last intake time and writes a matching history entry.
+     */
     suspend fun markTaken(medication: Medication, timestamp: Long = System.currentTimeMillis()) {
         // 1. Update Medication
         medicationDao.updateMedication(medication.toEntity().copy(lastTakenAt = timestamp))
@@ -67,6 +94,9 @@ class MedicationRepository(private val medicationDao: MedicationDao) {
         )
     }
 
+    /**
+     * Converts a database entity into the domain model used outside the data layer.
+     */
     private fun MedicationEntity.toDomain(): Medication {
         return Medication(
             id = id,
@@ -79,6 +109,9 @@ class MedicationRepository(private val medicationDao: MedicationDao) {
         )
     }
 
+    /**
+     * Converts a domain model back into the database entity used by Room.
+     */
     private fun Medication.toEntity(): MedicationEntity {
         return MedicationEntity(
             id = if (id == 0) 0 else id,

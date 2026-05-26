@@ -8,7 +8,13 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
+/**
+ * Restores medication alarms after the device boots or the app package is replaced.
+ */
 class BootCompletedReceiver : BroadcastReceiver() {
+    /**
+     * Reacts to supported system broadcasts and reschedules all saved medication reminders.
+     */
     override fun onReceive(context: Context, intent: Intent) {
         if (
             intent.action == Intent.ACTION_BOOT_COMPLETED ||

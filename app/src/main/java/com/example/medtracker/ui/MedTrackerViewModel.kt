@@ -13,20 +13,27 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
+/**
+ * Holds UI state for medications and connects user actions to persistence and reminders.
+ */
 class MedTrackerViewModel(
     private val repository: MedicationRepository,
     private val scheduler: ReminderScheduler
 ) : ViewModel() {
 
-    // Wir nutzen Flows für Echtzeit-Updates aus der Datenbank
+    /**
+     * Current medication list exposed as Compose-friendly state.
+     */
     val medications: StateFlow<List<Medication>> = repository.medications
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
+    /**
+     * Current intake history exposed as Compose-friendly state.
+     */
     val history: StateFlow<List<IntakeHistoryEntity>> = repository.history
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     init {
-        // Alarme automatisch neu planen, wenn sich die Medikamente ändern
         viewModelScope.launch {
             medications.collect { list ->
                 if (list.isNotEmpty()) {
@@ -36,12 +43,18 @@ class MedTrackerViewModel(
         }
     }
 
+    /**
+     * Saves a new medication and lets the repository normalize the stored values.
+     */
     fun addMedication(name: String, dosage: String, intakeTimes: List<IntakeTime>, notes: String, daysOfWeek: Set<java.time.DayOfWeek>) {
         viewModelScope.launch {
             repository.add(name, dosage, intakeTimes, notes, daysOfWeek)
         }
     }
 
+    /**
+     * Deletes a medication and cancels all alarms that belong to it.
+     */
     fun deleteMedication(id: Int) {
         viewModelScope.launch {
             repository.delete(id)
@@ -49,18 +62,30 @@ class MedTrackerViewModel(
         }
     }
 
+    /**
+     * Records that the given medication has been taken.
+     */
     fun markTaken(medication: Medication) {
         viewModelScope.launch {
             repository.markTaken(medication)
         }
     }
 
+    /**
+     * Reports whether exact alarm scheduling is currently available.
+     */
     fun canScheduleExactAlarms(): Boolean = scheduler.canScheduleExactAlarms()
 
+    /**
+     * Creates the view model with dependencies that are built outside of the default constructor.
+     */
     class Factory(
         private val repository: MedicationRepository,
         private val scheduler: ReminderScheduler
     ) : ViewModelProvider.Factory {
+        /**
+         * Returns a MedTrackerViewModel instance for Android's ViewModel provider.
+         */
         @Suppress("UNCHECKED_CAST")
         override fun <T : androidx.lifecycle.ViewModel> create(modelClass: Class<T>): T {
             return MedTrackerViewModel(repository, scheduler) as T

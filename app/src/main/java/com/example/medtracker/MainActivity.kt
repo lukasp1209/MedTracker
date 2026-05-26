@@ -92,6 +92,9 @@ import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
+/**
+ * Main entry point of the app and host for the medication, weekly, and history screens.
+ */
 class MainActivity : ComponentActivity() {
     private val viewModel: MedTrackerViewModel by viewModels {
         val database = AppDatabase.getDatabase(this)
@@ -101,6 +104,9 @@ class MainActivity : ComponentActivity() {
         )
     }
 
+    /**
+     * Creates the Compose UI and switches between the main app screens.
+     */
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
@@ -151,6 +157,9 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    /**
+     * Opens Android settings so the user can allow exact alarm scheduling.
+     */
     private fun requestExactAlarmAccess() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             val intent = Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM).apply {
@@ -161,6 +170,9 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+/**
+ * Displays the main medication overview and adapts between phone and tablet layouts.
+ */
 @Composable
 private fun MedTrackerScreen(
     viewModel: MedTrackerViewModel,
@@ -261,10 +273,16 @@ private fun MedTrackerScreen(
     }
 }
 
+/**
+ * Creates the permission launcher used to request notification access on Android 13 and newer.
+ */
 @Composable
 private fun rememberNotificationPermissionLauncher() =
     rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
 
+/**
+ * Shows the top summary card with medication count and permission actions.
+ */
 @Composable
 private fun HeroCard(
     medicationCount: Int,
@@ -322,6 +340,9 @@ private fun HeroCard(
     }
 }
 
+/**
+ * Displays the form for entering a new medication, its dosage, weekdays, times, and notes.
+ */
 @OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
 @Composable
 private fun MedicationForm(
@@ -515,6 +536,9 @@ private fun MedicationForm(
     }
 }
 
+/**
+ * Shows the weekly medication plan grouped by weekday.
+ */
 @Composable
 fun WeeklyScheduleScreen(viewModel: MedTrackerViewModel) {
     val medications by viewModel.medications.collectAsState()
@@ -582,6 +606,9 @@ fun WeeklyScheduleScreen(viewModel: MedTrackerViewModel) {
     }
 }
 
+/**
+ * Displays the scrollable list of all medication cards.
+ */
 @Composable
 private fun MedicationList(
     medications: List<Medication>,
@@ -606,6 +633,9 @@ private fun MedicationList(
     }
 }
 
+/**
+ * Shows the heading above the medication list and summarizes how many entries exist.
+ */
 @Composable
 private fun MedicationSectionHeader(count: Int) {
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -626,6 +656,9 @@ private fun MedicationSectionHeader(count: Int) {
     }
 }
 
+/**
+ * Displays one medication with its dosage, intake times, notes, last intake, and actions.
+ */
 @OptIn(ExperimentalLayoutApi::class, ExperimentalFoundationApi::class)
 @Composable
 private fun MedicationCard(

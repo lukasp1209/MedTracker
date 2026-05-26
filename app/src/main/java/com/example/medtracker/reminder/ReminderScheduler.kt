@@ -9,15 +9,24 @@ import com.example.medtracker.model.Medication
 import java.time.LocalDateTime
 import java.time.ZoneId
 
+/**
+ * Schedules and cancels exact Android alarms for medication reminders.
+ */
 class ReminderScheduler(private val context: Context) {
     private val alarmManager = context.getSystemService(AlarmManager::class.java)
 
+    /**
+     * Schedules every configured intake time for one medication.
+     */
     fun scheduleMedication(medication: Medication) {
         medication.intakeTimes.forEachIndexed { index, _ ->
             scheduleMedicationSlot(medication, index)
         }
     }
 
+    /**
+     * Cancels all possible alarm slots for the medication with the given id.
+     */
     fun cancelMedication(id: Int) {
         for (slotIndex in 0 until MAX_SLOTS_PER_MEDICATION) {
             val intent = MedicationAlarmReceiver.createIntent(context, id, slotIndex)
@@ -32,10 +41,16 @@ class ReminderScheduler(private val context: Context) {
         }
     }
 
+    /**
+     * Schedules reminders for all medications in the provided list.
+     */
     fun rescheduleAll(medications: List<Medication>) {
         medications.forEach { scheduleMedication(it) }
     }
 
+    /**
+     * Checks whether the app is allowed to schedule exact alarms on this Android version.
+     */
     fun canScheduleExactAlarms(): Boolean {
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             alarmManager.canScheduleExactAlarms()
@@ -44,6 +59,9 @@ class ReminderScheduler(private val context: Context) {
         }
     }
 
+    /**
+     * Schedules one specific intake slot for the next matching time.
+     */
     fun scheduleMedicationSlot(medication: Medication, slotIndex: Int) {
         val intakeTime = medication.intakeTimes.getOrNull(slotIndex) ?: return
         val triggerAtMillis = nextTriggerTimeMillis(intakeTime.hour, intakeTime.minute)
@@ -65,6 +83,9 @@ class ReminderScheduler(private val context: Context) {
         alarmManager.setAlarmClock(alarmClock, alarmIntent)
     }
 
+    /**
+     * Calculates the next future timestamp for the given hour and minute.
+     */
     private fun nextTriggerTimeMillis(hour: Int, minute: Int): Long {
         val now = LocalDateTime.now()
         var next = now.withHour(hour).withMinute(minute).withSecond(0).withNano(0)
@@ -74,6 +95,9 @@ class ReminderScheduler(private val context: Context) {
         return next.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
     }
 
+    /**
+     * Creates a unique request code for a medication and one of its intake slots.
+     */
     private fun requestCode(medicationId: Int, slotIndex: Int): Int = medicationId * SLOT_FACTOR + slotIndex
 
     companion object {

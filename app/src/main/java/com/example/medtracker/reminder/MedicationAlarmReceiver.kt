@@ -19,7 +19,13 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
+/**
+ * Handles fired medication alarms and shows the high-priority reminder notification.
+ */
 class MedicationAlarmReceiver : BroadcastReceiver() {
+    /**
+     * Loads the medication for the alarm, handles quick actions, and schedules the next occurrence.
+     */
     override fun onReceive(context: Context, intent: Intent) {
         val medicationId = intent.getIntExtra(EXTRA_MEDICATION_ID, -1)
         val slotIndex = intent.getIntExtra(EXTRA_SLOT_INDEX, -1)
@@ -87,6 +93,9 @@ class MedicationAlarmReceiver : BroadcastReceiver() {
         }
     }
 
+    /**
+     * Creates the Android notification channel used for medication reminders.
+     */
     private fun createNotificationChannel(context: Context) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
 
@@ -115,14 +124,23 @@ class MedicationAlarmReceiver : BroadcastReceiver() {
         private const val ACTION_OFFSET_MARK_TAKEN = 10_000
         private const val CHANNEL_ID = "medication_reminders"
 
+        /**
+         * Builds an intent containing the medication and intake slot identifiers.
+         */
         fun createIntent(context: Context, medicationId: Int, slotIndex: Int): Intent {
             return Intent(context, MedicationAlarmReceiver::class.java)
                 .putExtra(EXTRA_MEDICATION_ID, medicationId)
                 .putExtra(EXTRA_SLOT_INDEX, slotIndex)
         }
 
+        /**
+         * Creates a stable notification id for one medication intake slot.
+         */
         private fun notificationId(medicationId: Int, slotIndex: Int): Int = medicationId * 100 + slotIndex
 
+        /**
+         * Builds the notification body text from dosage and scheduled time.
+         */
         private fun buildNotificationText(dosage: String, timeLabel: String): String {
             return if (dosage.isBlank()) {
                 "Einnahme um $timeLabel"

@@ -30,7 +30,13 @@ import com.example.medtracker.reminder.MedicationAlarmReceiver
 import com.example.medtracker.ui.theme.MedTrackerTheme
 import kotlinx.coroutines.launch
 
+/**
+ * Full-screen alarm activity shown when a medication reminder needs immediate attention.
+ */
 class AlarmAlertActivity : ComponentActivity() {
+    /**
+     * Loads the alarm medication, renders the alert UI, and wires the action buttons.
+     */
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         showOverLockScreen()
@@ -66,6 +72,9 @@ class AlarmAlertActivity : ComponentActivity() {
         }
     }
 
+    /**
+     * Configures the activity so it can appear over the lock screen and wake the device.
+     */
     private fun showOverLockScreen() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
             setShowWhenLocked(true)
@@ -89,6 +98,9 @@ class AlarmAlertActivity : ComponentActivity() {
         private const val EXTRA_MEDICATION_ID = "extra_medication_id"
         private const val EXTRA_SLOT_INDEX = "extra_slot_index"
 
+        /**
+         * Builds the intent used by reminders to open this alarm screen.
+         */
         fun createIntent(context: Context, medicationId: Int, slotIndex: Int): Intent {
             return Intent(context, AlarmAlertActivity::class.java)
                 .putExtra(EXTRA_MEDICATION_ID, medicationId)
@@ -98,6 +110,9 @@ class AlarmAlertActivity : ComponentActivity() {
     }
 }
 
+/**
+ * Displays the visible alarm content and exposes callbacks for the user's decision.
+ */
 @Composable
 private fun AlarmAlertScreen(
     title: String,

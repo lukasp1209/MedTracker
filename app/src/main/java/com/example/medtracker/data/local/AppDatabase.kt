@@ -10,7 +10,13 @@ import com.example.medtracker.model.IntakeTime
 import org.json.JSONArray
 import org.json.JSONObject
 
+/**
+ * Provides Room type converters for values that cannot be stored directly in SQLite.
+ */
 class Converters {
+    /**
+     * Converts a list of intake times into a JSON string for database storage.
+     */
     @TypeConverter
     fun fromIntakeTimeList(value: List<IntakeTime>): String {
         val array = JSONArray()
@@ -23,6 +29,9 @@ class Converters {
         return array.toString()
     }
 
+    /**
+     * Restores a list of intake times from the JSON string stored in the database.
+     */
     @TypeConverter
     fun toIntakeTimeList(value: String): List<IntakeTime> {
         val array = JSONArray(value)
@@ -34,11 +43,17 @@ class Converters {
         }
     }
 
+    /**
+     * Converts selected weekdays into a comma-separated list of enum names.
+     */
     @TypeConverter
     fun fromDayOfWeekSet(value: Set<java.time.DayOfWeek>): String {
         return value.joinToString(",") { it.name }
     }
 
+    /**
+     * Restores selected weekdays from their comma-separated database representation.
+     */
     @TypeConverter
     fun toDayOfWeekSet(value: String): Set<java.time.DayOfWeek> {
         if (value.isBlank()) return emptySet()
@@ -46,15 +61,24 @@ class Converters {
     }
 }
 
+/**
+ * Main Room database for medications and intake history entries.
+ */
 @Database(entities = [MedicationEntity::class, IntakeHistoryEntity::class], version = 1)
 @TypeConverters(Converters::class)
 abstract class AppDatabase : RoomDatabase() {
+    /**
+     * Gives access to all medication and history database operations.
+     */
     abstract fun medicationDao(): MedicationDao
 
     companion object {
         @Volatile
         private var INSTANCE: AppDatabase? = null
 
+        /**
+         * Returns the single database instance used by the whole application.
+         */
         fun getDatabase(context: Context): AppDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(

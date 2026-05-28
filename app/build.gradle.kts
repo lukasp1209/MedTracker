@@ -7,7 +7,7 @@ plugins {
 
 android {
     namespace = "com.example.medtracker"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.example.medtracker"
@@ -50,6 +50,8 @@ android {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
         }
     }
+    compileSdkMinor = 1
+    buildToolsVersion = "37.0.0"
 }
 
 dependencies {

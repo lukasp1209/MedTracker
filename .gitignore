@@ -1,6 +1,9 @@
 # Android Studio / IntelliJ
 *.iml
+.idea/
 .gradle
+.gradle-user-home/
+.kotlin/
 /local.properties
 /.idea/caches
 /.idea/libraries
@@ -29,3 +32,5 @@ captures/
 .apple
 .DS_Store
 *.hprof
+*.apk
+build-apk.ps1

@@ -74,7 +74,7 @@ class MedicationAlarmReceiver : BroadcastReceiver() {
 
                 val notification = NotificationCompat.Builder(context, CHANNEL_ID)
                     .setSmallIcon(R.drawable.ic_launcher_foreground)
-                    .setContentTitle("Zeit fuer ${medication.name}")
+                    .setContentTitle("Zeit für ${medication.name}")
                     .setContentText(buildNotificationText(medication.dosage, intakeTime.label()))
                     .setPriority(NotificationCompat.PRIORITY_MAX)
                     .setCategory(NotificationCompat.CATEGORY_ALARM)

@@ -70,6 +70,20 @@ class MedicationRepository(private val medicationDao: MedicationDao) {
     }
 
     /**
+     * Deletes one recorded intake history entry.
+     */
+    suspend fun deleteHistoryEntry(id: Int) {
+        medicationDao.deleteHistoryEntry(id)
+    }
+
+    /**
+     * Deletes every recorded intake history entry.
+     */
+    suspend fun clearHistory() {
+        medicationDao.clearHistory()
+    }
+
+    /**
      * Marks the medication with the given id as taken at the provided timestamp.
      */
     suspend fun markTaken(medicationId: Int, timestamp: Long = System.currentTimeMillis()) {

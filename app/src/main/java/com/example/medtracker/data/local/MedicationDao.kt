@@ -53,4 +53,16 @@ interface MedicationDao {
      */
     @Query("SELECT * FROM intake_history ORDER BY takenAt DESC")
     fun getHistory(): Flow<List<IntakeHistoryEntity>>
+
+    /**
+     * Deletes one recorded history entry.
+     */
+    @Query("DELETE FROM intake_history WHERE id = :id")
+    suspend fun deleteHistoryEntry(id: Int)
+
+    /**
+     * Deletes the complete recorded intake history.
+     */
+    @Query("DELETE FROM intake_history")
+    suspend fun clearHistory()
 }

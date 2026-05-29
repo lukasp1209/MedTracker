@@ -1,10 +1,5 @@
 package com.example.medtracker.ui
 
-import android.os.Bundle
-import androidx.activity.ComponentActivity
-import androidx.activity.compose.setContent
-import androidx.activity.enableEdgeToEdge
-import androidx.activity.viewModels
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -33,43 +28,14 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import com.example.medtracker.data.MedicationRepository
-import com.example.medtracker.data.local.AppDatabase
+import com.example.medtracker.R
 import com.example.medtracker.model.Medication
-import com.example.medtracker.reminder.ReminderScheduler
-import com.example.medtracker.ui.theme.MedTrackerTheme
 import java.time.DayOfWeek
 import java.time.format.TextStyle
 import java.util.Locale
-
-/**
- * Hosts the weekly medication plan in its own activity.
- */
-class WeeklyScheduleActivity : ComponentActivity() {
-    private val viewModel: MedTrackerViewModel by viewModels {
-        val database = AppDatabase.getDatabase(this)
-        MedTrackerViewModel.Factory(
-            MedicationRepository(database.medicationDao()),
-            ReminderScheduler(this)
-        )
-    }
-
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
-
-        setContent {
-            MedTrackerTheme {
-                WeeklyScheduleScreen(
-                    viewModel = viewModel,
-                    onBack = { finish() }
-                )
-            }
-        }
-    }
-}
 
 /**
  * Shows the weekly medication plan grouped by weekday.
@@ -85,10 +51,13 @@ fun WeeklyScheduleScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Wochenplan") },
+                title = { Text(stringResource(R.string.weekly_schedule_title)) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Zurueck")
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = stringResource(R.string.back_label)
+                        )
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -138,7 +107,7 @@ private fun WeeklyDayCard(
 
             if (medications.isEmpty()) {
                 Text(
-                    "Keine Medikamente geplant",
+                    text = stringResource(R.string.weekly_schedule_empty_day),
                     style = MaterialTheme.typography.bodyMedium,
                     modifier = Modifier.padding(vertical = 8.dp)
                 )
@@ -156,7 +125,7 @@ private fun WeeklyDayCard(
                             Text(medication.dosage, style = MaterialTheme.typography.bodySmall)
                         }
                         Text(
-                            medication.intakeTimes.joinToString(", ") { it.label() },
+                            text = medication.intakeTimes.joinToString(", ") { it.label() },
                             style = MaterialTheme.typography.labelMedium
                         )
                     }

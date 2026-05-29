@@ -61,6 +61,24 @@ class MedTrackerViewModel(
     }
 
     /**
+     * Deletes one item from the intake history.
+     */
+    fun deleteHistoryEntry(id: Int) {
+        viewModelScope.launch {
+            repository.deleteHistoryEntry(id)
+        }
+    }
+
+    /**
+     * Deletes the complete intake history.
+     */
+    fun clearHistory() {
+        viewModelScope.launch {
+            repository.clearHistory()
+        }
+    }
+
+    /**
      * Records that the given medication has been taken.
      */
     fun markTaken(medication: Medication) {

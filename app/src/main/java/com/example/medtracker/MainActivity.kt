@@ -83,7 +83,7 @@ import com.example.medtracker.model.Medication
 import com.example.medtracker.reminder.ReminderScheduler
 import com.example.medtracker.ui.HistoryScreen
 import com.example.medtracker.ui.MedTrackerViewModel
-import com.example.medtracker.ui.WeeklyScheduleActivity
+import com.example.medtracker.ui.WeeklyScheduleScreen
 import com.example.medtracker.ui.theme.MedTrackerTheme
 import java.time.Instant
 import java.time.ZoneId
@@ -124,8 +124,8 @@ class MainActivity : ComponentActivity() {
                             NavigationBarItem(
                                 icon = { Icon(Icons.Default.DateRange, contentDescription = null) },
                                 label = { Text("Woche") },
-                                selected = false,
-                                onClick = { startActivity(Intent(this@MainActivity, WeeklyScheduleActivity::class.java)) }
+                                selected = currentScreen == "week",
+                                onClick = { currentScreen = "week" }
                             )
                             NavigationBarItem(
                                 icon = { Icon(Icons.Default.History, contentDescription = null) },
@@ -143,6 +143,10 @@ class MainActivity : ComponentActivity() {
                                 onRequestExactAlarmAccess = { requestExactAlarmAccess() }
                             )
                             "history" -> HistoryScreen(
+                                viewModel = viewModel,
+                                onBack = { currentScreen = "today" }
+                            )
+                            "week" -> WeeklyScheduleScreen(
                                 viewModel = viewModel,
                                 onBack = { currentScreen = "today" }
                             )

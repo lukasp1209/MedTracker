@@ -3,6 +3,14 @@
     <string name="app_name">MedTracker</string>
     <string name="history_title">Einnahmehistorie</string>
     <string name="history_empty">Noch keine Einnahmen aufgezeichnet.</string>
+    <string name="history_clear_title">Historie löschen</string>
+    <string name="history_clear_message">Alle gespeicherten Einnahmen werden dauerhaft aus der Historie entfernt.</string>
+    <string name="history_clear_confirm">Löschen</string>
+    <string name="history_delete_entry">Eintrag löschen</string>
+    <string name="back_label">Zurück</string>
+    <string name="cancel_label">Abbrechen</string>
+    <string name="weekly_schedule_title">Wochenplan</string>
+    <string name="weekly_schedule_empty_day">Keine Medikamente geplant</string>
     <string name="history_taken_at">Eingenommen am %s</string>
     <string name="medication_name_label">Medikament</string>
     <string name="status_taken">Eingenommen</string>

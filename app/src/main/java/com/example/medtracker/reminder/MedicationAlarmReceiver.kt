@@ -45,12 +45,16 @@ class MedicationAlarmReceiver : BroadcastReceiver() {
                 createNotificationChannel(context)
 
                 val notificationId = notificationId(medication.id, slotIndex)
-                val fullScreenIntent = PendingIntent.getActivity(
-                    context,
-                    notificationId,
-                    AlarmAlertActivity.createIntent(context, medication.id, slotIndex),
-                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-                )
+                val fullScreenIntent = if (userUnlocked) {
+                    PendingIntent.getActivity(
+                        context,
+                        notificationId,
+                        AlarmAlertActivity.createIntent(context, medication.id, slotIndex),
+                        PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                    )
+                } else {
+                    null
+                }
 
                 val markTakenIntent = PendingIntent.getBroadcast(
                     context,
@@ -79,18 +83,28 @@ class MedicationAlarmReceiver : BroadcastReceiver() {
                     return@launch
                 }
 
-                val notification = NotificationCompat.Builder(context, CHANNEL_ID)
+                val notificationContent = buildNotificationContent(
+                    medicationName = medication.name,
+                    dosage = medication.dosage,
+                    timeLabel = intakeTime.label(),
+                    userUnlocked = userUnlocked
+                )
+                val notificationBuilder = NotificationCompat.Builder(context, CHANNEL_ID)
                     .setSmallIcon(R.drawable.ic_launcher_foreground)
-                    .setContentTitle("Zeit für ${medication.name}")
-                    .setContentText(buildNotificationText(medication.dosage, intakeTime.label()))
+                    .setContentTitle(notificationContent.title)
+                    .setContentText(notificationContent.text)
                     .setPriority(NotificationCompat.PRIORITY_MAX)
                     .setCategory(NotificationCompat.CATEGORY_ALARM)
                     .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
                     .setAutoCancel(true)
                     .setOngoing(true)
-                    .setFullScreenIntent(fullScreenIntent, true)
                     .addAction(0, "Als genommen markieren", markTakenIntent)
-                    .build()
+
+                if (fullScreenIntent != null) {
+                    notificationBuilder.setFullScreenIntent(fullScreenIntent, true)
+                }
+
+                val notification = notificationBuilder.build()
 
                 NotificationManagerCompat.from(context).notify(notificationId, notification)
                 ReminderScheduler(context).scheduleMedicationSlot(medication, slotIndex)
@@ -130,6 +144,12 @@ class MedicationAlarmReceiver : BroadcastReceiver() {
         private const val ACTION_MARK_TAKEN = "com.example.medtracker.action.MARK_TAKEN"
         private const val ACTION_OFFSET_MARK_TAKEN = 10_000
         private const val CHANNEL_ID = "medication_reminders"
+        private const val PRIVATE_REMINDER_TEXT = "Zeit für Ihre Medikamente!"
+
+        private data class NotificationContent(
+            val title: String,
+            val text: String
+        )
 
         /**
          * Builds an intent containing the medication and intake slot identifiers.
@@ -146,14 +166,35 @@ class MedicationAlarmReceiver : BroadcastReceiver() {
         private fun notificationId(medicationId: Int, slotIndex: Int): Int = medicationId * 100 + slotIndex
 
         /**
-         * Builds the notification body text from dosage and scheduled time.
+         * Builds the notification text. Before the first unlock, CE data must not be exposed.
          */
-        private fun buildNotificationText(dosage: String, timeLabel: String): String {
-            return if (dosage.isBlank()) {
-                "Einnahme um $timeLabel"
-            } else {
-                "$dosage um $timeLabel einnehmen"
+        private fun buildNotificationContent(
+            medicationName: String,
+            dosage: String,
+            timeLabel: String,
+            userUnlocked: Boolean
+        ): NotificationContent {
+            if (!userUnlocked) {
+                return NotificationContent(
+                    title = PRIVATE_REMINDER_TEXT,
+                    text = PRIVATE_REMINDER_TEXT
+                )
             }
+
+            val medicationDetails = listOf(dosage, medicationName)
+                .map { it.trim() }
+                .filter { it.isNotBlank() }
+                .joinToString(" ")
+            val title = if (medicationDetails.isBlank()) {
+                "Bitte nehmen Sie jetzt Ihr Medikament ein"
+            } else {
+                "Bitte nehmen Sie jetzt $medicationDetails ein"
+            }
+
+            return NotificationContent(
+                title = title,
+                text = "Geplant f\u00fcr $timeLabel"
+            )
         }
     }
 }

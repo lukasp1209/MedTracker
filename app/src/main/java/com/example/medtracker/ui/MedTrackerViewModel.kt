@@ -36,9 +36,7 @@ class MedTrackerViewModel(
     init {
         viewModelScope.launch {
             medications.collect { list ->
-                if (list.isNotEmpty()) {
-                    scheduler.rescheduleAll(list)
-                }
+                scheduler.rescheduleAll(list)
             }
         }
     }

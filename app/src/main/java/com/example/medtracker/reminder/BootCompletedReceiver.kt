@@ -24,8 +24,12 @@ class BootCompletedReceiver : BroadcastReceiver() {
             val pendingResult = goAsync()
             CoroutineScope(Dispatchers.IO).launch {
                 try {
-                    val repository = MedicationRepository(context)
-                    ReminderScheduler(context).rescheduleAll(repository.getAll())
+                    val medications = if (intent.action == Intent.ACTION_LOCKED_BOOT_COMPLETED) {
+                        DirectBootReminderStore.load(context)
+                    } else {
+                        MedicationRepository(context).getAll()
+                    }
+                    ReminderScheduler(context).rescheduleAll(medications)
                 } finally {
                     pendingResult.finish()
                 }

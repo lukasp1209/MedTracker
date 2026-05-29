@@ -9,6 +9,7 @@ import android.content.Intent
 import android.media.AudioAttributes
 import android.media.RingtoneManager
 import android.os.Build
+import android.os.UserManager
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
@@ -34,8 +35,12 @@ class MedicationAlarmReceiver : BroadcastReceiver() {
         val pendingResult = goAsync()
         CoroutineScope(Dispatchers.IO).launch {
             try {
-                val repository = MedicationRepository(context)
-                val medication = repository.getAll().firstOrNull { it.id == medicationId } ?: return@launch
+                val userUnlocked = context.getSystemService(UserManager::class.java).isUserUnlocked
+                val medication = if (userUnlocked) {
+                    MedicationRepository(context).getAll().firstOrNull { it.id == medicationId }
+                } else {
+                    DirectBootReminderStore.load(context).firstOrNull { it.id == medicationId }
+                } ?: return@launch
                 val intakeTime = medication.intakeTimes.getOrNull(slotIndex) ?: return@launch
                 createNotificationChannel(context)
 
@@ -55,7 +60,9 @@ class MedicationAlarmReceiver : BroadcastReceiver() {
                 )
 
                 if (intent.action == ACTION_MARK_TAKEN) {
-                    repository.markTaken(medication.id)
+                    if (userUnlocked) {
+                        MedicationRepository(context).markTaken(medication.id)
+                    }
                     ReminderScheduler(context).scheduleMedicationSlot(medication, slotIndex)
                     NotificationManagerCompat.from(context).cancel(notificationId)
                     return@launch

@@ -33,4 +33,5 @@ captures/
 .DS_Store
 *.hprof
 *.apk
-build-apk.ps1
+!MedTracker.apk
+!build-apk.ps1

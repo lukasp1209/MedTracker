@@ -28,6 +28,7 @@ class ReminderScheduler(private val context: Context) {
      * Cancels all possible alarm slots for the medication with the given id.
      */
     fun cancelMedication(id: Int) {
+        DirectBootReminderStore.remove(context, id)
         for (slotIndex in 0 until MAX_SLOTS_PER_MEDICATION) {
             val intent = MedicationAlarmReceiver.createIntent(context, id, slotIndex)
             val pendingIntent = PendingIntent.getBroadcast(
@@ -45,6 +46,7 @@ class ReminderScheduler(private val context: Context) {
      * Schedules reminders for all medications in the provided list.
      */
     fun rescheduleAll(medications: List<Medication>) {
+        DirectBootReminderStore.save(context, medications)
         medications.forEach { scheduleMedication(it) }
     }
 

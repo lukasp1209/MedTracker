@@ -34,9 +34,6 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
@@ -44,10 +41,6 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.medtracker.R
-import com.example.medtracker.data.local.IntakeHistoryEntity
-import java.time.Instant
-import java.time.ZoneId
-import java.time.format.DateTimeFormatter
 
 /**
  * Shows the recorded medication intake history.
@@ -58,27 +51,26 @@ fun HistoryScreen(
     viewModel: MedTrackerViewModel,
     onBack: () -> Unit
 ) {
-    val history by viewModel.history.collectAsState()
-    val formatter = remember { DateTimeFormatter.ofPattern("dd. MMMM yyyy, HH:mm 'Uhr'") }
-    var showClearHistoryDialog by remember { mutableStateOf(false) }
+    val history by viewModel.historyEntries.collectAsState()
+    val showClearHistoryDialog by viewModel.showClearHistoryDialog.collectAsState()
 
     if (showClearHistoryDialog) {
         AlertDialog(
-            onDismissRequest = { showClearHistoryDialog = false },
+            onDismissRequest = viewModel::dismissClearHistoryDialog,
             title = { Text(stringResource(R.string.history_clear_title)) },
             text = { Text(stringResource(R.string.history_clear_message)) },
             confirmButton = {
                 TextButton(
                     onClick = {
                         viewModel.clearHistory()
-                        showClearHistoryDialog = false
+                        viewModel.dismissClearHistoryDialog()
                     }
                 ) {
                     Text(stringResource(R.string.history_clear_confirm))
                 }
             },
             dismissButton = {
-                TextButton(onClick = { showClearHistoryDialog = false }) {
+                TextButton(onClick = viewModel::dismissClearHistoryDialog) {
                     Text(stringResource(R.string.cancel_label))
                 }
             }
@@ -100,7 +92,7 @@ fun HistoryScreen(
                 actions = {
                     IconButton(
                         enabled = history.isNotEmpty(),
-                        onClick = { showClearHistoryDialog = true }
+                        onClick = viewModel::showClearHistoryDialog
                     ) {
                         Icon(
                             imageVector = Icons.Default.DeleteSweep,
@@ -145,7 +137,6 @@ fun HistoryScreen(
                     items(history) { entry ->
                         HistoryCard(
                             entry = entry,
-                            formatter = formatter,
                             onDelete = { viewModel.deleteHistoryEntry(entry.id) }
                         )
                     }
@@ -160,8 +151,7 @@ fun HistoryScreen(
  */
 @Composable
 private fun HistoryCard(
-    entry: IntakeHistoryEntity,
-    formatter: DateTimeFormatter,
+    entry: HistoryEntryUiState,
     onDelete: () -> Unit
 ) {
     Card(
@@ -185,7 +175,7 @@ private fun HistoryCard(
                     fontWeight = FontWeight.Bold
                 )
                 Text(
-                    text = formatter.format(Instant.ofEpochMilli(entry.takenAt).atZone(ZoneId.systemDefault())),
+                    text = entry.takenAtText,
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -196,15 +186,15 @@ private fun HistoryCard(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 val statusColor = when (entry.status) {
-                    "TAKEN" -> MaterialTheme.colorScheme.primary
-                    "SNOOZED" -> MaterialTheme.colorScheme.secondary
-                    else -> MaterialTheme.colorScheme.error
+                    HistoryStatusUiType.Taken -> MaterialTheme.colorScheme.primary
+                    HistoryStatusUiType.Snoozed -> MaterialTheme.colorScheme.secondary
+                    HistoryStatusUiType.Skipped -> MaterialTheme.colorScheme.error
                 }
 
                 val statusText = when (entry.status) {
-                    "TAKEN" -> stringResource(R.string.status_taken)
-                    "SNOOZED" -> stringResource(R.string.status_snoozed)
-                    else -> stringResource(R.string.status_skipped)
+                    HistoryStatusUiType.Taken -> stringResource(R.string.status_taken)
+                    HistoryStatusUiType.Snoozed -> stringResource(R.string.status_snoozed)
+                    HistoryStatusUiType.Skipped -> stringResource(R.string.status_skipped)
                 }
 
                 Surface(

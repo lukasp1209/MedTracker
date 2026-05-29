@@ -56,9 +56,6 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
@@ -74,20 +71,18 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import java.time.DayOfWeek
-import java.time.format.TextStyle
-import java.util.Locale
 import com.example.medtracker.data.MedicationRepository
 import com.example.medtracker.data.local.AppDatabase
 import com.example.medtracker.model.IntakeTime
-import com.example.medtracker.model.Medication
 import com.example.medtracker.reminder.ReminderScheduler
 import com.example.medtracker.ui.HistoryScreen
+import com.example.medtracker.ui.FormDayUiState
+import com.example.medtracker.ui.MedTrackerScreen as Screen
+import com.example.medtracker.ui.MedicationCardUiState
+import com.example.medtracker.ui.MedicationFormUiState
 import com.example.medtracker.ui.MedTrackerViewModel
 import com.example.medtracker.ui.WeeklyScheduleScreen
 import com.example.medtracker.ui.theme.MedTrackerTheme
-import java.time.Instant
-import java.time.ZoneId
-import java.time.format.DateTimeFormatter
 
 /**
  * Main entry point of the app and host for the medication and history screens.
@@ -110,7 +105,7 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             MedTrackerTheme {
-                var currentScreen by remember { mutableStateOf("today") }
+                val currentScreen by viewModel.currentScreen.collectAsState()
 
                 Scaffold(
                     bottomBar = {
@@ -118,37 +113,37 @@ class MainActivity : ComponentActivity() {
                             NavigationBarItem(
                                 icon = { Icon(Icons.Default.Home, contentDescription = null) },
                                 label = { Text("Heute") },
-                                selected = currentScreen == "today",
-                                onClick = { currentScreen = "today" }
+                                selected = currentScreen == Screen.Today,
+                                onClick = { viewModel.selectScreen(Screen.Today) }
                             )
                             NavigationBarItem(
                                 icon = { Icon(Icons.Default.DateRange, contentDescription = null) },
                                 label = { Text("Woche") },
-                                selected = currentScreen == "week",
-                                onClick = { currentScreen = "week" }
+                                selected = currentScreen == Screen.Week,
+                                onClick = { viewModel.selectScreen(Screen.Week) }
                             )
                             NavigationBarItem(
                                 icon = { Icon(Icons.Default.History, contentDescription = null) },
                                 label = { Text("Historie") },
-                                selected = currentScreen == "history",
-                                onClick = { currentScreen = "history" }
+                                selected = currentScreen == Screen.History,
+                                onClick = { viewModel.selectScreen(Screen.History) }
                             )
                         }
                     }
                 ) { innerPadding ->
                     Box(modifier = Modifier.padding(innerPadding)) {
                         when (currentScreen) {
-                            "today" -> MedTrackerScreen(
+                            Screen.Today -> MedTrackerScreen(
                                 viewModel = viewModel,
                                 onRequestExactAlarmAccess = { requestExactAlarmAccess() }
                             )
-                            "history" -> HistoryScreen(
+                            Screen.History -> HistoryScreen(
                                 viewModel = viewModel,
-                                onBack = { currentScreen = "today" }
+                                onBack = { viewModel.selectScreen(Screen.Today) }
                             )
-                            "week" -> WeeklyScheduleScreen(
+                            Screen.Week -> WeeklyScheduleScreen(
                                 viewModel = viewModel,
-                                onBack = { currentScreen = "today" }
+                                onBack = { viewModel.selectScreen(Screen.Today) }
                             )
                         }
                     }
@@ -168,6 +163,11 @@ class MainActivity : ComponentActivity() {
             startActivity(intent)
         }
     }
+
+    override fun onResume() {
+        super.onResume()
+        viewModel.refreshExactAlarmAccess()
+    }
 }
 
 /**
@@ -178,7 +178,11 @@ private fun MedTrackerScreen(
     viewModel: MedTrackerViewModel,
     onRequestExactAlarmAccess: () -> Unit
 ) {
-    val medications by viewModel.medications.collectAsState()
+    val medicationCards by viewModel.medicationCards.collectAsState()
+    val medicationCountText by viewModel.medicationCountText.collectAsState()
+    val formState by viewModel.formState.collectAsState()
+    val formDays by viewModel.formDays.collectAsState()
+    val canScheduleExactAlarms by viewModel.canScheduleExactAlarms.collectAsState()
     val notificationPermissionLauncher = rememberNotificationPermissionLauncher()
 
     Box(
@@ -205,6 +209,9 @@ private fun MedTrackerScreen(
         ) {
             val tabletLayout = this.maxWidth >= 900.dp
             val sharedModifier = Modifier.fillMaxSize()
+            val requestNotifications = {
+                notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+            }
 
             if (tabletLayout) {
                 Row(
@@ -218,18 +225,31 @@ private fun MedTrackerScreen(
                         verticalArrangement = Arrangement.spacedBy(16.dp)
                     ) {
                         HeroCard(
-                            medicationCount = medications.size,
-                            canScheduleExactAlarms = viewModel.canScheduleExactAlarms(),
-                            onRequestNotifications = {
-                                notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-                            },
+                            medicationCount = medicationCards.size,
+                            canScheduleExactAlarms = canScheduleExactAlarms,
+                            onRequestNotifications = requestNotifications,
                             onRequestExactAlarmAccess = onRequestExactAlarmAccess
                         )
-                        MedicationForm(onSave = viewModel::addMedication)
+                        MedicationForm(
+                            state = formState,
+                            dayOptions = formDays,
+                            onNameChange = viewModel::updateMedicationName,
+                            onDosageChange = viewModel::updateDosage,
+                            onDosageExpandedChange = viewModel::setDosageExpanded,
+                            onDosageSuggestionSelected = viewModel::selectDosageSuggestion,
+                            onDayToggle = viewModel::toggleSelectedDay,
+                            onHourChange = viewModel::updateHour,
+                            onMinuteChange = viewModel::updateMinute,
+                            onAddIntakeTime = viewModel::addIntakeTimeFromInput,
+                            onRemoveIntakeTime = viewModel::removeIntakeTime,
+                            onNotesChange = viewModel::updateNotes,
+                            onSave = viewModel::saveMedicationFromForm
+                        )
                     }
 
                     MedicationList(
-                        medications = medications,
+                        medications = medicationCards,
+                        countText = medicationCountText,
                         modifier = Modifier.weight(1.25f),
                         contentPadding = PaddingValues(bottom = 24.dp),
                         onDelete = viewModel::deleteMedication,
@@ -244,27 +264,41 @@ private fun MedTrackerScreen(
                 ) {
                     item {
                         HeroCard(
-                            medicationCount = medications.size,
-                            canScheduleExactAlarms = viewModel.canScheduleExactAlarms(),
+                            medicationCount = medicationCards.size,
+                            canScheduleExactAlarms = canScheduleExactAlarms,
                             onRequestNotifications = {
                                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                                    notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                                    requestNotifications()
                                 }
                             },
                             onRequestExactAlarmAccess = onRequestExactAlarmAccess
                         )
                     }
                     item {
-                        MedicationForm(onSave = viewModel::addMedication)
+                        MedicationForm(
+                            state = formState,
+                            dayOptions = formDays,
+                            onNameChange = viewModel::updateMedicationName,
+                            onDosageChange = viewModel::updateDosage,
+                            onDosageExpandedChange = viewModel::setDosageExpanded,
+                            onDosageSuggestionSelected = viewModel::selectDosageSuggestion,
+                            onDayToggle = viewModel::toggleSelectedDay,
+                            onHourChange = viewModel::updateHour,
+                            onMinuteChange = viewModel::updateMinute,
+                            onAddIntakeTime = viewModel::addIntakeTimeFromInput,
+                            onRemoveIntakeTime = viewModel::removeIntakeTime,
+                            onNotesChange = viewModel::updateNotes,
+                            onSave = viewModel::saveMedicationFromForm
+                        )
                     }
                     item {
-                        MedicationSectionHeader(count = medications.size)
+                        MedicationSectionHeader(countText = medicationCountText)
                     }
-                    items(medications, key = { medication -> medication.id }) { medication ->
+                    items(medicationCards, key = { item -> item.id }) { medication ->
                         MedicationCard(
                             medication = medication,
                             onDelete = { viewModel.deleteMedication(medication.id) },
-                            onMarkTaken = { viewModel.markTaken(medication) }
+                            onMarkTaken = { viewModel.markTaken(medication.id) }
                         )
                     }
                 }
@@ -346,26 +380,20 @@ private fun HeroCard(
 @OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
 @Composable
 private fun MedicationForm(
-    onSave: (String, String, List<IntakeTime>, String, Set<DayOfWeek>) -> Unit
+    state: MedicationFormUiState,
+    dayOptions: List<FormDayUiState>,
+    onNameChange: (String) -> Unit,
+    onDosageChange: (String) -> Unit,
+    onDosageExpandedChange: (Boolean) -> Unit,
+    onDosageSuggestionSelected: (String) -> Unit,
+    onDayToggle: (DayOfWeek) -> Unit,
+    onHourChange: (String) -> Unit,
+    onMinuteChange: (String) -> Unit,
+    onAddIntakeTime: () -> Unit,
+    onRemoveIntakeTime: (IntakeTime) -> Unit,
+    onNotesChange: (String) -> Unit,
+    onSave: () -> Unit
 ) {
-    var name by remember { mutableStateOf("") }
-    var dosage by remember { mutableStateOf("") }
-    var dosageExpanded by remember { mutableStateOf(false) }
-    var hourString by remember { mutableStateOf("08") }
-    var minuteString by remember { mutableStateOf("00") }
-    var notes by remember { mutableStateOf("") }
-    val intakeTimes = remember { androidx.compose.runtime.mutableStateListOf(IntakeTime(8, 0)) }
-    val selectedDays = remember { mutableStateOf(DayOfWeek.values().toSet()) }
-
-    val dosageSuggestions = listOf(
-        "1 Tablette",
-        "1/2 Tablette",
-        "2 Tabletten",
-        "5 ml",
-        "10 ml",
-        "1 Kapsel"
-    )
-
     Card(
         shape = RoundedCornerShape(32.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.94f))
@@ -377,40 +405,37 @@ private fun MedicationForm(
             Text(stringResource(R.string.new_medication), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
             
             OutlinedTextField(
-                value = name,
-                onValueChange = { name = it },
+                value = state.name,
+                onValueChange = onNameChange,
                 modifier = Modifier.fillMaxWidth(),
                 label = { Text(stringResource(R.string.name_label)) },
                 shape = RoundedCornerShape(20.dp),
                 singleLine = true
             )
             ExposedDropdownMenuBox(
-                expanded = dosageExpanded,
-                onExpandedChange = { dosageExpanded = it }
+                expanded = state.dosageExpanded,
+                onExpandedChange = onDosageExpandedChange
             ) {
                 OutlinedTextField(
-                    value = dosage,
-                    onValueChange = { dosage = it },
+                    value = state.dosage,
+                    onValueChange = onDosageChange,
                     modifier = Modifier
                         .fillMaxWidth()
                         .menuAnchor(MenuAnchorType.PrimaryEditable, true),
                     label = { Text(stringResource(R.string.dosage_label)) },
                     placeholder = { Text("z. B. 1 Tablette") },
-                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = dosageExpanded) },
+                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = state.dosageExpanded) },
                     shape = RoundedCornerShape(20.dp),
                     singleLine = true
                 )
                 ExposedDropdownMenu(
-                    expanded = dosageExpanded,
-                    onDismissRequest = { dosageExpanded = false }
+                    expanded = state.dosageExpanded,
+                    onDismissRequest = { onDosageExpandedChange(false) }
                 ) {
-                    dosageSuggestions.forEach { suggestion ->
+                    state.dosageSuggestions.forEach { suggestion ->
                         DropdownMenuItem(
                             text = { Text(suggestion) },
-                            onClick = {
-                                dosage = suggestion
-                                dosageExpanded = false
-                            }
+                            onClick = { onDosageSuggestionSelected(suggestion) }
                         )
                     }
                 }
@@ -423,19 +448,11 @@ private fun MedicationForm(
                     horizontalArrangement = Arrangement.spacedBy(4.dp),
                     verticalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
-                    DayOfWeek.values().forEach { day ->
+                    dayOptions.forEach { day ->
                         FilterChip(
-                            selected = selectedDays.value.contains(day),
-                            onClick = {
-                                if (selectedDays.value.contains(day)) {
-                                    if (selectedDays.value.size > 1) {
-                                        selectedDays.value = selectedDays.value - day
-                                    }
-                                } else {
-                                    selectedDays.value = selectedDays.value + day
-                                }
-                            },
-                            label = { Text(day.getDisplayName(TextStyle.SHORT, Locale.GERMAN)) }
+                            selected = day.selected,
+                            onClick = { onDayToggle(day.day) },
+                            label = { Text(day.label) }
                         )
                     }
                 }
@@ -452,10 +469,8 @@ private fun MedicationForm(
                     Text(stringResource(R.string.intake_times_label), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         OutlinedTextField(
-                            value = hourString,
-                            onValueChange = { input ->
-                                if (input.length <= 2 && input.all { it.isDigit() }) hourString = input
-                            },
+                            value = state.hourString,
+                            onValueChange = onHourChange,
                             modifier = Modifier.weight(1f),
                             label = { Text("Stunde") },
                             placeholder = { Text("HH") },
@@ -464,10 +479,8 @@ private fun MedicationForm(
                             singleLine = true
                         )
                         OutlinedTextField(
-                            value = minuteString,
-                            onValueChange = { input ->
-                                if (input.length <= 2 && input.all { it.isDigit() }) minuteString = input
-                            },
+                            value = state.minuteString,
+                            onValueChange = onMinuteChange,
                             modifier = Modifier.weight(1f),
                             label = { Text("Minute") },
                             placeholder = { Text("mm") },
@@ -477,15 +490,7 @@ private fun MedicationForm(
                         )
                     }
                     OutlinedButton(
-                        onClick = {
-                            val h = hourString.toIntOrNull()?.coerceIn(0, 23) ?: 8
-                            val m = minuteString.toIntOrNull()?.coerceIn(0, 59) ?: 0
-                            val candidate = IntakeTime(h, m)
-                            if (intakeTimes.none { it.hour == candidate.hour && it.minute == candidate.minute }) {
-                                intakeTimes.add(candidate)
-                                intakeTimes.sortWith(compareBy<IntakeTime> { it.hour }.thenBy { it.minute })
-                            }
-                        }
+                        onClick = onAddIntakeTime
                     ) {
                         Text(stringResource(R.string.add_time))
                     }
@@ -493,10 +498,10 @@ private fun MedicationForm(
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        intakeTimes.forEach { intakeTime ->
+                        state.intakeTimes.forEach { intakeTime ->
                             FilterChip(
                                 selected = false,
-                                onClick = { intakeTimes.remove(intakeTime) },
+                                onClick = { onRemoveIntakeTime(intakeTime) },
                                 label = { Text(intakeTime.label()) },
                                 trailingIcon = {
                                     Text("x", color = MaterialTheme.colorScheme.primary)
@@ -508,26 +513,15 @@ private fun MedicationForm(
             }
 
             OutlinedTextField(
-                value = notes,
-                onValueChange = { notes = it },
+                value = state.notes,
+                onValueChange = onNotesChange,
                 modifier = Modifier.fillMaxWidth(),
                 label = { Text(stringResource(R.string.notes_label)) },
                 placeholder = { Text("Mit Wasser, nach dem Essen ...") },
                 shape = RoundedCornerShape(20.dp)
             )
             Button(
-                onClick = {
-                    if (name.isBlank() || intakeTimes.isEmpty()) return@Button
-                    onSave(name, dosage, intakeTimes.toList(), notes, selectedDays.value)
-                    name = ""
-                    dosage = ""
-                    hourString = "08"
-                    minuteString = "00"
-                    notes = ""
-                    intakeTimes.clear()
-                    intakeTimes.add(IntakeTime(8, 0))
-                    selectedDays.value = DayOfWeek.values().toSet()
-                },
+                onClick = onSave,
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Text(stringResource(R.string.add_medication))
@@ -541,23 +535,24 @@ private fun MedicationForm(
  */
 @Composable
 private fun MedicationList(
-    medications: List<Medication>,
+    medications: List<MedicationCardUiState>,
+    countText: String,
     modifier: Modifier = Modifier,
     contentPadding: PaddingValues,
     onDelete: (Int) -> Unit,
-    onMarkTaken: (Medication) -> Unit
+    onMarkTaken: (Int) -> Unit
 ) {
     LazyColumn(
         modifier = modifier,
         contentPadding = contentPadding,
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
-        item { MedicationSectionHeader(count = medications.size) }
+        item { MedicationSectionHeader(countText = countText) }
         items(medications, key = { medication -> medication.id }) { medication ->
             MedicationCard(
                 medication = medication,
                 onDelete = { onDelete(medication.id) },
-                onMarkTaken = { onMarkTaken(medication) }
+                onMarkTaken = { onMarkTaken(medication.id) }
             )
         }
     }
@@ -567,7 +562,7 @@ private fun MedicationList(
  * Shows the heading above the medication list and summarizes how many entries exist.
  */
 @Composable
-private fun MedicationSectionHeader(count: Int) {
+private fun MedicationSectionHeader(countText: String) {
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Text(
             text = stringResource(R.string.planned_medications),
@@ -575,11 +570,7 @@ private fun MedicationSectionHeader(count: Int) {
             fontWeight = FontWeight.SemiBold
         )
         Text(
-            text = if (count == 0) {
-                "Noch keine Einträge vorhanden."
-            } else {
-                "$count Einträge mit einer oder mehreren Tageszeiten."
-            },
+            text = countText,
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
@@ -592,12 +583,10 @@ private fun MedicationSectionHeader(count: Int) {
 @OptIn(ExperimentalLayoutApi::class, ExperimentalFoundationApi::class)
 @Composable
 private fun MedicationCard(
-    medication: Medication,
+    medication: MedicationCardUiState,
     onDelete: () -> Unit,
     onMarkTaken: () -> Unit
 ) {
-    val formatter = remember { DateTimeFormatter.ofPattern("dd.MM.yyyy HH:mm") }
-
     Card(
         shape = RoundedCornerShape(28.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.96f))
@@ -614,7 +603,7 @@ private fun MedicationCard(
                 Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text(medication.name, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
                     Text(
-                        text = medication.dosage.ifBlank { "Dosis offen" },
+                        text = medication.dosageText,
                         style = MaterialTheme.typography.bodyLarge,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -624,7 +613,7 @@ private fun MedicationCard(
                     color = MaterialTheme.colorScheme.tertiaryContainer
                 ) {
                     Text(
-                        text = "${medication.intakeTimes.size}x täglich",
+                        text = medication.intakeCountText,
                         modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
                         color = MaterialTheme.colorScheme.onTertiaryContainer,
                         fontWeight = FontWeight.Medium
@@ -636,17 +625,17 @@ private fun MedicationCard(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                medication.intakeTimes.forEach { intakeTime ->
+                medication.intakeTimeLabels.forEach { intakeTimeLabel ->
                     AssistChip(
                         onClick = {},
-                        label = { Text(intakeTime.label()) }
+                        label = { Text(intakeTimeLabel) }
                     )
                 }
             }
 
-            if (medication.notes.isNotBlank()) {
+            medication.notesText?.let { notes ->
                 Text(
-                    text = medication.notes,
+                    text = notes,
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -655,9 +644,7 @@ private fun MedicationCard(
             HorizontalDivider(color = MaterialTheme.colorScheme.surfaceVariant)
 
             Text(
-                text = stringResource(R.string.last_taken_label, medication.lastTakenAt?.let { timestamp ->
-                    formatter.format(Instant.ofEpochMilli(timestamp).atZone(ZoneId.systemDefault()))
-                } ?: stringResource(R.string.never_taken)),
+                text = stringResource(R.string.last_taken_label, medication.lastTakenText),
                 style = MaterialTheme.typography.bodyMedium
             )
 

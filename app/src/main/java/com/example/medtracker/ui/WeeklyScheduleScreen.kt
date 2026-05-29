@@ -32,10 +32,6 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.medtracker.R
-import com.example.medtracker.model.Medication
-import java.time.DayOfWeek
-import java.time.format.TextStyle
-import java.util.Locale
 
 /**
  * Shows the weekly medication plan grouped by weekday.
@@ -46,7 +42,7 @@ fun WeeklyScheduleScreen(
     viewModel: MedTrackerViewModel,
     onBack: () -> Unit
 ) {
-    val medications by viewModel.medications.collectAsState()
+    val weeklySchedule by viewModel.weeklySchedule.collectAsState()
 
     Scaffold(
         topBar = {
@@ -75,10 +71,9 @@ fun WeeklyScheduleScreen(
                 .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            DayOfWeek.values().forEach { day ->
+            weeklySchedule.forEach { day ->
                 WeeklyDayCard(
-                    day = day,
-                    medications = medications.filter { it.daysOfWeek.contains(day) }
+                    day = day
                 )
             }
         }
@@ -87,8 +82,7 @@ fun WeeklyScheduleScreen(
 
 @Composable
 private fun WeeklyDayCard(
-    day: DayOfWeek,
-    medications: List<Medication>
+    day: WeeklyDayUiState
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -99,20 +93,20 @@ private fun WeeklyDayCard(
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
             Text(
-                text = day.getDisplayName(TextStyle.FULL, Locale.GERMAN),
+                text = day.dayLabel,
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.SemiBold,
                 color = MaterialTheme.colorScheme.primary
             )
 
-            if (medications.isEmpty()) {
+            if (day.medications.isEmpty()) {
                 Text(
                     text = stringResource(R.string.weekly_schedule_empty_day),
                     style = MaterialTheme.typography.bodyMedium,
                     modifier = Modifier.padding(vertical = 8.dp)
                 )
             } else {
-                medications.forEach { medication ->
+                day.medications.forEach { medication ->
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -125,7 +119,7 @@ private fun WeeklyDayCard(
                             Text(medication.dosage, style = MaterialTheme.typography.bodySmall)
                         }
                         Text(
-                            text = medication.intakeTimes.joinToString(", ") { it.label() },
+                            text = medication.intakeTimesText,
                             style = MaterialTheme.typography.labelMedium
                         )
                     }

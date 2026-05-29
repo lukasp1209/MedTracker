@@ -42,7 +42,9 @@ com.example.medtracker
 +-- ui
     +-- AlarmAlertActivity.kt
     +-- HistoryScreen.kt
+    +-- MedTrackerUiState.kt
     +-- MedTrackerViewModel.kt
+    +-- WeeklyScheduleScreen.kt
     +-- theme
         +-- Theme.kt
 ```
@@ -54,10 +56,10 @@ The app is separated into several layers:
 - `model`: Contains the domain models used by the app logic and UI.
 - `data/local`: Contains the Room database, entities, type converters, and DAO queries.
 - `data`: Contains the repository, which connects the database with the rest of the app.
-- `ui`: Contains the ViewModel and Jetpack Compose screens.
+- `ui`: Contains the ViewModel, UI state models, and Jetpack Compose screens.
 - `reminder`: Contains alarm scheduling, notification handling, and boot rescheduling.
 
-This separation keeps database logic, UI logic, and background reminder logic easier to understand and maintain.
+This separation keeps database logic, ViewModel logic, rendering code, and background reminder logic easier to understand and maintain. Compose screens are kept as a rendering layer: they display state and forward user events to the ViewModel.
 
 ## Important Classes
 
@@ -100,15 +102,36 @@ The repository:
 
 It exposes:
 
-- `medications`: current medication list as `StateFlow`
-- `history`: current intake history as `StateFlow`
+- `currentScreen`: selected app screen as `StateFlow`
+- `formState`: medication form state as `StateFlow`
+- `formDays`: weekday chip state for the form as `StateFlow`
+- `medicationCards`: prepared medication card data as `StateFlow`
+- `medicationCountText`: prepared medication list summary text as `StateFlow`
+- `historyEntries`: prepared intake history entries as `StateFlow`
+- `weeklySchedule`: medications grouped and formatted by weekday as `StateFlow`
+- `showClearHistoryDialog`: history clear dialog visibility as `StateFlow`
+- `canScheduleExactAlarms`: exact alarm permission state as `StateFlow`
 
 It also provides functions for user actions:
 
-- `addMedication(...)`
+- `selectScreen(...)`
+- `updateMedicationName(...)`
+- `updateDosage(...)`
+- `setDosageExpanded(...)`
+- `selectDosageSuggestion(...)`
+- `updateHour(...)`
+- `updateMinute(...)`
+- `toggleSelectedDay(...)`
+- `addIntakeTimeFromInput()`
+- `removeIntakeTime(...)`
+- `saveMedicationFromForm()`
 - `deleteMedication(...)`
+- `deleteHistoryEntry(...)`
+- `clearHistory()`
 - `markTaken(...)`
-- `canScheduleExactAlarms()`
+- `refreshExactAlarmAccess()`
+
+`MedTrackerUiState.kt` contains the UI state models used by the Compose layer. The ViewModel prepares formatted text, grouped lists, validation results, selected weekdays, history status mappings, and navigation state so the UI layer does not contain business or presentation logic.
 
 ### Reminder Layer
 
@@ -131,11 +154,12 @@ Important Compose functions in `MainActivity.kt` include:
 - `MedTrackerScreen`
 - `HeroCard`
 - `MedicationForm`
-- `WeeklyScheduleScreen`
 - `MedicationList`
 - `MedicationCard`
 
 `HistoryScreen.kt` displays the intake history.
+
+`WeeklyScheduleScreen.kt` displays the weekly medication schedule.
 
 `AlarmAlertActivity.kt` displays a full-screen alarm UI when a reminder needs immediate attention.
 
@@ -149,7 +173,16 @@ Important Compose functions in `MainActivity.kt` include:
 User enters medication data
         |
         v
-MedicationForm calls ViewModel.addMedication()
+MedicationForm forwards input events to the ViewModel
+        |
+        v
+ViewModel updates MedicationFormUiState
+        |
+        v
+User taps save
+        |
+        v
+MedicationForm calls ViewModel.saveMedicationFromForm()
         |
         v
 ViewModel calls Repository.add()

@@ -7,7 +7,6 @@ import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
 import androidx.activity.ComponentActivity
-import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -23,12 +22,10 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.widthIn
@@ -76,7 +73,6 @@ import androidx.compose.material.icons.filled.Home
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
-import androidx.compose.ui.text.style.TextAlign
 import java.time.DayOfWeek
 import java.time.format.TextStyle
 import java.util.Locale
@@ -87,13 +83,14 @@ import com.example.medtracker.model.Medication
 import com.example.medtracker.reminder.ReminderScheduler
 import com.example.medtracker.ui.HistoryScreen
 import com.example.medtracker.ui.MedTrackerViewModel
+import com.example.medtracker.ui.WeeklyScheduleActivity
 import com.example.medtracker.ui.theme.MedTrackerTheme
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
 /**
- * Main entry point of the app and host for the medication, weekly, and history screens.
+ * Main entry point of the app and host for the medication and history screens.
  */
 class MainActivity : ComponentActivity() {
     private val viewModel: MedTrackerViewModel by viewModels {
@@ -105,7 +102,7 @@ class MainActivity : ComponentActivity() {
     }
 
     /**
-     * Creates the Compose UI and switches between the main app screens.
+     * Creates the Compose UI and switches between the screens hosted by this activity.
      */
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -127,8 +124,8 @@ class MainActivity : ComponentActivity() {
                             NavigationBarItem(
                                 icon = { Icon(Icons.Default.DateRange, contentDescription = null) },
                                 label = { Text("Woche") },
-                                selected = currentScreen == "weekly",
-                                onClick = { currentScreen = "weekly" }
+                                selected = false,
+                                onClick = { startActivity(Intent(this@MainActivity, WeeklyScheduleActivity::class.java)) }
                             )
                             NavigationBarItem(
                                 icon = { Icon(Icons.Default.History, contentDescription = null) },
@@ -145,7 +142,6 @@ class MainActivity : ComponentActivity() {
                                 viewModel = viewModel,
                                 onRequestExactAlarmAccess = { requestExactAlarmAccess() }
                             )
-                            "weekly" -> WeeklyScheduleScreen(viewModel = viewModel)
                             "history" -> HistoryScreen(
                                 viewModel = viewModel,
                                 onBack = { currentScreen = "today" }
@@ -531,76 +527,6 @@ private fun MedicationForm(
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Text(stringResource(R.string.add_medication))
-            }
-        }
-    }
-}
-
-/**
- * Shows the weekly medication plan grouped by weekday.
- */
-@Composable
-fun WeeklyScheduleScreen(viewModel: MedTrackerViewModel) {
-    val medications by viewModel.medications.collectAsState()
-
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(16.dp)
-            .verticalScroll(rememberScrollState()),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
-    ) {
-        Text(
-            text = "Wochenplan",
-            style = MaterialTheme.typography.headlineMedium,
-            fontWeight = FontWeight.Bold
-        )
-
-        DayOfWeek.values().forEach { day ->
-            val medicationsForDay = medications.filter { it.daysOfWeek.contains(day) }
-            
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.3f)
-                )
-            ) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Text(
-                        text = day.getDisplayName(TextStyle.FULL, Locale.GERMAN),
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.SemiBold,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-                    
-                    if (medicationsForDay.isEmpty()) {
-                        Text(
-                            "Keine Medikamente geplant",
-                            style = MaterialTheme.typography.bodyMedium,
-                            modifier = Modifier.padding(vertical = 8.dp)
-                        )
-                    } else {
-                        medicationsForDay.forEach { medication ->
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(vertical = 4.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(medication.name, fontWeight = FontWeight.Medium)
-                                    Text(medication.dosage, style = MaterialTheme.typography.bodySmall)
-                                }
-                                Text(
-                                    medication.intakeTimes.joinToString(", ") { it.label() },
-                                    style = MaterialTheme.typography.labelMedium
-                                )
-                            }
-                        }
-                    }
-                }
             }
         }
     }
